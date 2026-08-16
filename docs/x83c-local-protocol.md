@@ -127,7 +127,9 @@ physical-button capture confirmed `01` auto, `02` sleep, `03` turbo, and `04`
 manual. APK resources label `05` as purify, so it is not aliased to manual.
 The tested X83C ignored both outgoing `51 05` and the separately tested
 `51 04`; manual therefore uses a validated speed command, while purify remains
-an APK-derived control that may depend on firmware or model.
+an APK-derived control that may depend on firmware or model. Home Assistant
+therefore exposes only four modes on X83/X83C: auto, sleep, turbo, and manual.
+Experimental families retain their APK-derived options.
 
 ## APK provenance
 
