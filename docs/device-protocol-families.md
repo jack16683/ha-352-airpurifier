@@ -115,6 +115,11 @@ outer UDP offset 24:
 | 19-26 | 43-50 | accumulated values and decimal exponents |
 | 29 | 53 | linkage |
 
+The APK does not attach text labels to the three-value air-quality field. The
+integration displays values 1/2/3 as `优`/`良`/`差`, inferred from the monotonic
+ordering and an X83C reporting value 1 at PM2.5=0, and retains the numeric code
+as the sensor's `raw_code` attribute.
+
 The Home Assistant integration implements this F072 builder and exposes power,
 mode, six speed positions, display, timer, and child-lock controls. Community
 feedback on the original project confirms that X50 status was readable on real

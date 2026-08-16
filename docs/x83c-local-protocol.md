@@ -71,7 +71,7 @@ Additional hardware tests confirmed these zero-based offsets in the complete
 | Offset | State | Validated values |
 | ---: | --- | --- |
 | 21 | timer selection | `00` off, `01` one hour |
-| 22 | air-quality class | APK accepts `01`, `02`, `03`; labels not yet confirmed |
+| 22 | air-quality class | APK accepts `01`, `02`, `03`; HA displays inferred `优`, `良`, `差` and retains the raw code |
 | 23 | child lock | `00` off, `11` on |
 | 26-27 | timer remaining | big-endian minutes; one hour began at `003C` |
 | 28-29 | PM2.5 | big-endian integer |
