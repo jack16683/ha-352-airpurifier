@@ -51,7 +51,7 @@ class X83Hub:
         self._control_lock = asyncio.Lock()
         self.status = {
             "pm25": 0, "speed": 0, "power": "OFF", "light": True, "mode": "None",
-            "filter_installed": "未安装", "total_air": 0,
+            "filter_type": None, "total_air": 0,
             "total_purification": 0, "timer_hours": 0,
             "timer_remaining_minutes": 0, "air_quality_level": None,
             "child_lock": False, "temperature": None, "humidity": None,

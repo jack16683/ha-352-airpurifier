@@ -42,7 +42,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 hub, "空气质量等级", "air_quality_level", None, "mdi:air-filter"
             ),
             X83Sensor(
-                hub, "滤芯状态", "filter_installed", None, "mdi:filter-check"
+                hub,
+                "滤芯类型代码",
+                "filter_type",
+                None,
+                "mdi:filter-cog",
+                unique_id_key="filter_installed",
             ),
             X83Sensor(hub, "累计空气量", "total_air", "m³", "mdi:weather-windy"),
             X83Sensor(
@@ -64,7 +69,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 "mdi:leaf-circle-outline",
             ),
             X83Sensor(
-                hub, "滤芯状态", "filter_installed", None, "mdi:filter-check-outline"
+                hub,
+                "滤芯类型代码",
+                "filter_type",
+                None,
+                "mdi:filter-cog",
+                unique_id_key="filter_installed",
             ),
             X83Sensor(
                 hub,
@@ -95,14 +105,14 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(entities)
 
 class X83Sensor(SensorEntity):
-    def __init__(self, hub, name, key, unit, icon):
+    def __init__(self, hub, name, key, unit, icon, unique_id_key=None):
         self._hub = hub
         self._key = key
         self._attr_has_entity_name = True
         self._attr_name = name
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon
-        self._attr_unique_id = f"sensor_{hub.mac}_{key}"
+        self._attr_unique_id = f"sensor_{hub.mac}_{unique_id_key or key}"
 
     @property
     def device_info(self):

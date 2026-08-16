@@ -80,6 +80,12 @@ Additional hardware tests confirmed these zero-based offsets in the complete
 | 40 | total-purification decimal exponent | APK scaling rules |
 | 41-42 | total-purification base | big-endian integer |
 
+The high nibble at offset 19 is the APK's `filterType`, not a filter-presence
+or remaining-life flag. Values 0, 1 and 2 select different airflow tables in
+the application. The tested X83C currently reports type 2. Filter lifetime is
+managed separately by filter records and is not present in this ordinary
+49-byte local status frame.
+
 The tested X83C currently reports its lifetime purification counter as
 `04 01 0E`: exponent 4 and base 270, or 2,700,000 m³. The archived APK only
 implemented exponent branches 0 through 3 and therefore displayed 270 for

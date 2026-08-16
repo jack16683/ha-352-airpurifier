@@ -96,8 +96,9 @@ def parse_x83_state(data: bytes) -> dict[str, object]:
 
     state["pm25"] = int.from_bytes(data[28:30], "big")
 
-    filter_type = (mode_and_filter & 0xF0) >> 4
-    state["filter_installed"] = "已安装" if filter_type in (1, 2) else "未安装"
+    # This nibble is named filterType by the APK and selects one of several
+    # airflow curves. It is not a filter-presence or remaining-life flag.
+    state["filter_type"] = (mode_and_filter & 0xF0) >> 4
 
     total_air = _apk_scaled_value(data[37], int.from_bytes(data[38:40], "big"))
     if total_air < 9_999_999:
@@ -153,9 +154,7 @@ def parse_f072_state(data: bytes, g30_family: bool = False) -> dict[str, object]
         state["power"] = "ON" if data[base + 9] == 0x00 else "OFF"
 
     state["pm25"] = int.from_bytes(data[base + 12:base + 14], "big")
-    state["filter_installed"] = (
-        "已安装" if ((mode_and_filter & 0xF0) >> 4) in (1, 2) else "未安装"
-    )
+    state["filter_type"] = (mode_and_filter & 0xF0) >> 4
     state["total_air"] = _apk_scaled_value(
         data[base + 21], int.from_bytes(data[base + 22:base + 24], "big")
     )

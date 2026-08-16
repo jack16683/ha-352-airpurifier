@@ -1,6 +1,6 @@
 # 352 Air Purifier for Home Assistant
 
-![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.2-blue.svg)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)
 ![IoT Class](https://img.shields.io/badge/IoT_Class-Local_Push-success.svg)
 
@@ -35,7 +35,7 @@
 * 🎛️ **模式切换**：X83 支持自动、睡眠、极速、手动；X50 支持自动、睡眠、极速、极净；G30/G45 只开放 APK 页面确认的自动、极净。
 * ⏲️ **硬件关机定时**：支持关闭、1、2、3、5、8 小时，状态来自设备回包。
 * 💡 **灯光控制**：净化器屏幕灯，以及 M25 的背光。
-* 📊 **丰富传感器**：实时 PM2.5、空气质量等级、滤芯安装状态、定时剩余分钟、累计空气量和累计净化空气量。
+* 📊 **丰富传感器**：实时 PM2.5、空气质量等级、滤芯类型代码、定时剩余分钟、累计空气量和累计净化空气量。
 * 🔒 **童锁与 PTC**：净化器童锁开关；X50/G30 协议族额外提供实验性 PTC 选择器。
 
 为减少 HomeKit Bridge 中的重复配件，电源、1-6 档风量和模式统一由
