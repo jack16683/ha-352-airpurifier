@@ -20,6 +20,21 @@ G30_FAMILY_MODELS = frozenset(("g30", "g45"))
 PURIFIER_CONTROL_MODELS = X83_FAMILY_MODELS | X50_FAMILY_MODELS | G30_FAMILY_MODELS
 CONTROL_MODELS = PURIFIER_CONTROL_MODELS | frozenset(("m25",))
 
+MODE_LABELS = {
+    "auto": "自动",
+    "sleep": "睡眠",
+    "turbo": "极速",
+    "manual": "手动",
+    "purify": "极净",
+}
+MODE_ACTION_BY_LABEL = {label: action for action, label in MODE_LABELS.items()}
+MODE_CODE_LABELS = {1: "自动", 2: "睡眠", 3: "极速", 4: "手动", 5: "极净"}
+
+# The APK preserves this device field as raw values 1/2/3 without attaching
+# labels. This monotonic mapping is inferred from the ordering and an X83C
+# reporting value 1 at PM2.5=0; keep the raw value as a sensor attribute.
+AIR_QUALITY_LABELS = {1: "优", 2: "良", 3: "差"}
+
 # G30/G45 expose a 16-bit air-volume value rather than six discrete speeds.
 # The APK passes the value through unchanged; these product-rated maxima are
 # used only to translate Home Assistant's 1-100% fan control.

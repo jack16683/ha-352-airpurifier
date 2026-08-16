@@ -5,6 +5,8 @@ from .const import (
     G30_AIR_VOLUME_RANGE,
     G30_AIR_VOLUME_STEP,
     G30_FAMILY_MODELS,
+    MODE_ACTION_BY_LABEL,
+    MODE_LABELS,
     X50_FAMILY_MODELS,
     X83_FAMILY_MODELS,
 )
@@ -32,19 +34,22 @@ class X83FanEntity(FanEntity):
             self._attr_speed_count = (
                 (maximum - minimum) // G30_AIR_VOLUME_STEP + 1
             )
-            self._attr_preset_modes = ["auto", "purify"]
+            self._preset_actions = ("auto", "purify")
         elif hub.model in X50_FAMILY_MODELS:
             self._attr_speed_count = 6
-            self._attr_preset_modes = ["auto", "sleep", "turbo", "purify"]
+            self._preset_actions = ("auto", "sleep", "turbo", "purify")
         else:
             self._attr_speed_count = 6
-            self._attr_preset_modes = [
+            self._preset_actions = (
                 "auto",
                 "sleep",
                 "turbo",
                 "manual",
                 "purify",
-            ]
+            )
+        self._attr_preset_modes = [
+            MODE_LABELS[action] for action in self._preset_actions
+        ]
 
     @property
     def device_info(self):
@@ -85,7 +90,7 @@ class X83FanEntity(FanEntity):
 
     @property
     def preset_mode(self):
-        return self._hub.status.get("mode")
+        return MODE_LABELS.get(self._hub.status.get("mode"))
 
     async def async_turn_on(self, percentage=None, preset_mode=None, **kwargs):
         self._hub.status["power"] = "ON"
@@ -131,15 +136,18 @@ class X83FanEntity(FanEntity):
         await self._hub.async_control(f"speed_{speed_idx}")
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        if preset_mode in self._attr_preset_modes:
+        # Keep accepting the former English actions for existing automations,
+        # while advertising and reporting Chinese labels in Home Assistant.
+        action = MODE_ACTION_BY_LABEL.get(preset_mode, preset_mode)
+        if action in self._preset_actions:
             self._hub.status["power"] = "ON"
-            self._hub.status["mode"] = preset_mode
+            self._hub.status["mode"] = action
             self.async_write_ha_state()
 
-            if preset_mode == "manual" and self._hub.model in X83_FAMILY_MODELS:
+            if action == "manual" and self._hub.model in X83_FAMILY_MODELS:
                 # X83C ignores the APK's 5105 mode command. A speed command is
                 # the hardware-validated way to enter manual mode (status 04).
                 speed = max(1, min(6, self._hub.status.get("speed", 1)))
                 await self._hub.async_control(f"speed_{speed}")
             else:
-                await self._hub.async_control(preset_mode)
+                await self._hub.async_control(action)
