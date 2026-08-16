@@ -150,8 +150,14 @@ class X83Hub:
                 parsed = parse_f072_state(data)
             if not parsed:
                 return
-            is_locked = now < self.command_lock
-            if is_locked:
+            # Ignore only stale broadcasts while an optimistic control update
+            # is settling. A response that echoes the current command sequence
+            # is authoritative and must be accepted immediately; otherwise a
+            # speed/mode value can remain stale until the next periodic packet.
+            is_stale_while_locked = (
+                now < self.command_lock and received_seq != self.current_seq
+            )
+            if is_stale_while_locked:
                 parsed.pop("power", None)
                 parsed.pop("speed", None)
                 parsed.pop("mode", None)

@@ -1,6 +1,6 @@
 # 352 Air Purifier for Home Assistant
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)
 ![IoT Class](https://img.shields.io/badge/IoT_Class-Local_Push-success.svg)
 
