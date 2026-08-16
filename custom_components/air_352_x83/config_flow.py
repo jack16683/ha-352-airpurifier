@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.components import dhcp
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
@@ -17,8 +16,6 @@ def _normalize_mac(mac: str) -> str:
 
 
 class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Discover or manually configure a 352 purifier."""
-
     VERSION = 2
 
     def __init__(self):
@@ -27,11 +24,15 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def _normalize(user_input):
-        return {
+        data = {
             "model": user_input["model"],
             "host": user_input["host"],
             "mac": _normalize_mac(user_input["mac"]),
         }
+        for key in ("company_code", "auth_code"):
+            if key in user_input:
+                data[key] = user_input[key]
+        return data
 
     @staticmethod
     def _schema(defaults=None):
@@ -42,10 +43,10 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "model", default=defaults.get("model", "x83c")
                 ): vol.In(MODELS),
                 vol.Required(
-                    "host", default=defaults.get("host", "192.168.1.100")
+                    "host", default=defaults.get("host", "192.0.2.10")
                 ): str,
                 vol.Required(
-                    "mac", default=defaults.get("mac", "AA:BB:CC:DD:EE:FF")
+                    "mac", default=defaults.get("mac", "")
                 ): str,
             }
         )
@@ -64,13 +65,17 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_automatic(self, user_input=None):
-        """Verify 352 candidates from Home Assistant's DHCP inventory."""
+        """Probe 352 devices found by Home Assistant's DHCP inventory."""
         if user_input is not None:
             self._discovered_device = self._discovered_devices[user_input["device"]]
             return await self.async_step_discovery_confirm()
 
         candidates = []
         configured = {str(value).upper() for value in self._async_current_ids()}
+        # DHCP keeps its latest address inventory in memory. There is no
+        # public active scan API for config flows, so use that inventory only
+        # to obtain candidates, then verify each one with the purifier's own
+        # read-only discovery response before showing it to the user.
         dhcp_data = self.hass.data.get(dhcp.DATA_DHCP)
         address_data = dhcp_data.address_data if dhcp_data is not None else {}
         for mac_address, info in address_data.items():
@@ -99,7 +104,7 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="manual", data_schema=self._schema())
 
     async def async_step_dhcp(self, discovery_info: DhcpServiceInfo):
-        """Verify an OUI match using the purifier's read-only UDP reply."""
+        """Verify an OUI match using the purifier's own UDP response."""
         mac = _normalize_mac(discovery_info.macaddress)
         await self.async_set_unique_id(mac)
         self._abort_if_unique_id_configured(updates={"host": discovery_info.ip})
@@ -111,13 +116,15 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.async_step_discovery_confirm()
 
     async def async_step_discovery_confirm(self, user_input=None):
-        """Confirm discovery and permit correcting the inferred submodel."""
+        """Confirm discovery and allow overriding the inferred product model."""
         assert self._discovered_device is not None
         if user_input is not None:
             data = {
                 "model": user_input["model"],
                 "host": str(self._discovered_device["host"]),
                 "mac": str(self._discovered_device["mac"]),
+                "company_code": int(self._discovered_device["company_code"]),
+                "auth_code": int(self._discovered_device["auth_code"]),
             }
             return await self._async_create_device_entry(data)
 
@@ -137,10 +144,13 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_reconfigure(self, user_input=None):
-        """Change the model or address without recreating entities."""
+        """Allow changing the model or address without recreating entities."""
         entry = self._get_reconfigure_entry()
         if user_input is not None:
             data = self._normalize(user_input)
+            for key in ("company_code", "auth_code"):
+                if key in entry.data:
+                    data[key] = entry.data[key]
             await self.async_set_unique_id(data["mac"])
             self._abort_if_unique_id_mismatch()
             return self.async_update_reload_and_abort(entry, data_updates=data)

@@ -1,5 +1,7 @@
-from homeassistant.components.light import LightEntity, ColorMode
+from homeassistant.components.light import ColorMode, LightEntity
+
 from .const import DOMAIN
+
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     hub = hass.data[DOMAIN][config_entry.entry_id]
@@ -19,7 +21,7 @@ class X83LightEntity(LightEntity):
     def device_info(self):
         return {
             "identifiers": {(DOMAIN, self._hub.mac)},
-            "name": f"352 {self._hub.model.upper()}空气净化器",
+            "name": self._hub.device_name,
             "manufacturer": "352",
             "model": self._hub.model.upper()
         }

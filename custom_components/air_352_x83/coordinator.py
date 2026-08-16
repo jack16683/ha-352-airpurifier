@@ -1,5 +1,10 @@
+import logging
 from datetime import timedelta
+
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
 
 class X83UpdateCoordinator(DataUpdateCoordinator):
     def __init__(self, hass, hub):

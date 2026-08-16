@@ -13,7 +13,7 @@ from .protocol import assemble_discovery_packet, parse_discovery_response
 async def async_discover_devices(
     candidates: list[tuple[str, str]], timeout: float = 2.0
 ) -> list[dict[str, object]]:
-    """Probe DHCP candidates and return verified discovery responses."""
+    """Probe DHCP candidates and return verified 352 discovery responses."""
     if not candidates:
         return []
 
@@ -31,8 +31,9 @@ async def async_discover_devices(
         expected_macs = {mac.upper() for _, mac in candidates}
         sequence = 1
         for host, mac in candidates:
-            # One request per supported protocol type. X83/X83C share type 02.
-            for model in ("x83c", "x50"):
+            # One representative product per APK protocol family. The reply
+            # carries the actual family byte and per-device auth code.
+            for model in ("m25", "x83c", "x50", "g30"):
                 packet = assemble_discovery_packet(mac, model, sequence)
                 sequence = (sequence + 1) & 0xFFFF
                 await loop.sock_sendto(sock, packet, (host, UDP_PORT))
