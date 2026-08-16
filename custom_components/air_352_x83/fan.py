@@ -1,5 +1,5 @@
 from homeassistant.components.fan import FanEntity, FanEntityFeature
-from .const import DOMAIN
+from .const import DOMAIN, X50_FAMILY_MODELS, X83_FAMILY_MODELS
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     hub = hass.data[DOMAIN][config_entry.entry_id]
@@ -18,8 +18,12 @@ class X83FanEntity(FanEntity):
             FanEntityFeature.TURN_OFF |
             FanEntityFeature.PRESET_MODE
         )
-        self._attr_speed_count = 6 
-        self._attr_preset_modes = ["auto", "sleep", "turbo", "manual"]
+        self._attr_speed_count = 6
+        self._attr_preset_modes = (
+            ["auto", "sleep", "turbo", "purify"]
+            if hub.model in X50_FAMILY_MODELS
+            else ["auto", "sleep", "turbo", "manual"]
+        )
 
     @property
     def device_info(self):
@@ -47,6 +51,13 @@ class X83FanEntity(FanEntity):
     @property
     def percentage(self):
         speed = self._hub.status.get("speed", 0)
+        # The APK deliberately encodes X50's sixth speed as 00.
+        if (
+            self._hub.model in X50_FAMILY_MODELS
+            and speed == 0
+            and self._hub.status.get("power") == "ON"
+        ):
+            speed = 6
         return int((speed / 6) * 100) if speed > 0 else 0
 
     @property
@@ -88,4 +99,10 @@ class X83FanEntity(FanEntity):
             self._hub.status["mode"] = preset_mode
             self.async_write_ha_state()
 
-            await self._hub.async_control(preset_mode)
+            if preset_mode == "manual" and self._hub.model in X83_FAMILY_MODELS:
+                # X83C ignores 5105. A speed command is the validated way to
+                # enter manual mode, which the device reports as mode 04.
+                speed = max(1, min(6, self._hub.status.get("speed", 1)))
+                await self._hub.async_control(f"speed_{speed}")
+            else:
+                await self._hub.async_control(preset_mode)
