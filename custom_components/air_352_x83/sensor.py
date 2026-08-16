@@ -24,9 +24,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             X83Sensor(hub, "二氧化碳", "co2", "ppm", "mdi:molecule-co2"),
             X83Sensor(hub, "PTC 状态原始值", "ptc", None, "mdi:radiator"),
             X83Sensor(hub, "风量", "air_volume", None, "mdi:weather-windy"),
-            X83Sensor(hub, "联动状态原始值", "linkage_state", None, "mdi:link"),
             X83Sensor(hub, "模式原始值", "mode_code", None, "mdi:fan-auto"),
-            X83Sensor(hub, "档位原始值", "speed", None, "mdi:fan"),
             X83Sensor(hub, "电源状态", "power", None, "mdi:power"),
             X83Sensor(hub, "屏幕状态", "light", None, "mdi:led-on"),
             X83Sensor(hub, "童锁状态", "child_lock", None, "mdi:lock"),
@@ -49,10 +47,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 "mdi:filter-cog",
                 unique_id_key="filter_installed",
             ),
-            X83Sensor(hub, "累计空气量", "total_air", "m³", "mdi:weather-windy"),
+            X83Sensor(
+                hub, "本次运行空气量", "total_air", "m³", "mdi:weather-windy"
+            ),
             X83Sensor(
                 hub,
-                "累计净化空气量",
+                "设备累计空气量",
                 "total_purification",
                 "m³",
                 "mdi:leaf-circle-outline",
@@ -63,7 +63,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             X83Sensor(hub, "PM2.5", "pm25", "µg/m³", "mdi:air-filter"),
             X83Sensor(
                 hub,
-                "累计净化空气量",
+                "设备累计空气量",
                 "total_purification",
                 "m³",
                 "mdi:leaf-circle-outline",
@@ -86,7 +86,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
             X83Sensor(
                 hub, "空气质量等级", "air_quality_level", None, "mdi:air-filter"
             ),
-            X83Sensor(hub, "累计空气量", "total_air", "m³", "mdi:weather-windy"),
+            X83Sensor(
+                hub, "本次运行空气量", "total_air", "m³", "mdi:weather-windy"
+            ),
+            X83Sensor(hub, "模式代码", "mode_code", None, "mdi:fan-auto"),
+            X83Sensor(
+                hub, "联动状态原始值", "linkage_state", None, "mdi:link"
+            ),
         ]
 
         # Models without hardware-validated controls keep their statically

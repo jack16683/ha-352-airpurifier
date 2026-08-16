@@ -17,7 +17,7 @@ def _platforms_for_model(model: str) -> list[str]:
     if model in PURIFIER_CONTROL_MODELS:
         return ["fan", "sensor", "select", "switch", "light"]
     if model == "m25":
-        return ["sensor", "light"]
+        return ["sensor", "select"]
     return ["sensor"]
 
 
@@ -67,11 +67,14 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     # and child-lock entities with controls. Remove their obsolete registry
     # entries so HomeKit does not receive duplicate unavailable accessories.
     registry = er.async_get(hass)
-    for platform, unique_id in (
+    obsolete_entities = [
         ("sensor", f"sensor_{hub.mac}_speed"),
         ("sensor", f"sensor_{hub.mac}_timer_hours"),
         ("binary_sensor", f"binary_sensor_{hub.mac}_child_lock"),
-    ):
+    ]
+    if model == "m25":
+        obsolete_entities.append(("light", f"light_{hub.mac}"))
+    for platform, unique_id in obsolete_entities:
         if entity_id := registry.async_get_entity_id(platform, DOMAIN, unique_id):
             registry.async_remove(entity_id)
     

@@ -14,10 +14,59 @@ PTC_OPTIONS = {"关闭": 0, "一级": 1, "二级": 2}
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     hub = hass.data[DOMAIN][config_entry.entry_id]
+    if hub.model == "m25":
+        async_add_entities([M25BacklightModeSelect(hub)])
+        return
     entities = [X83ShutdownTimerSelect(hub)]
     if hub.model in G30_FAMILY_MODELS or hub.model in X50_FAMILY_MODELS:
         entities.append(ExperimentalPtcSelect(hub))
     async_add_entities(entities)
+
+
+class M25BacklightModeSelect(SelectEntity):
+    """Select the two M25 backlight behaviours named by the APK."""
+
+    def __init__(self, hub):
+        self._hub = hub
+        self._attr_has_entity_name = True
+        self._attr_name = "背光模式"
+        self._attr_icon = "mdi:lightbulb-auto"
+        self._attr_unique_id = f"select_{hub.mac}_backlight_mode"
+        self._attr_options = ["5 分钟后关闭", "常亮"]
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._hub.mac)},
+            "name": self._hub.device_name,
+            "manufacturer": "352",
+            "model": self._hub.model.upper(),
+        }
+
+    @property
+    def should_poll(self):
+        return False
+
+    async def async_added_to_hass(self):
+        self._hub.register_callback(self.async_write_ha_state)
+
+    async def async_will_remove_from_hass(self):
+        self._hub.remove_callback(self.async_write_ha_state)
+
+    @property
+    def current_option(self):
+        return {0: "5 分钟后关闭", 1: "常亮"}.get(
+            self._hub.status.get("backlight")
+        )
+
+    async def async_select_option(self, option: str) -> None:
+        actions = {"5 分钟后关闭": (0, "light_off"), "常亮": (1, "light_on")}
+        if option not in actions:
+            raise ValueError(f"Unsupported M25 backlight option: {option}")
+        value, action = actions[option]
+        self._hub.status["backlight"] = value
+        self.async_write_ha_state()
+        await self._hub.async_control(action)
 
 
 class X83ShutdownTimerSelect(SelectEntity):

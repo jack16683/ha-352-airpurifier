@@ -10,9 +10,9 @@ MODE_BY_CODE = {
     1: "auto",
     2: "sleep",
     3: "turbo",
-    # X83C status captures report manual as 4. Older X83 protocol tables use 5.
+    # X83C hardware reports manual as 4; the APK labels status code 5 purify.
     4: "manual",
-    5: "manual",
+    5: "purify",
 }
 F072_MODE_BY_CODE = {
     1: "auto",
@@ -61,8 +61,9 @@ def parse_x83_state(data: bytes) -> dict[str, object]:
 
     state: dict[str, object] = {}
     mode_and_filter = data[19]
+    state["mode_code"] = mode_and_filter & 0x0F
 
-    mode = MODE_BY_CODE.get(mode_and_filter & 0x0F)
+    mode = MODE_BY_CODE.get(state["mode_code"])
     if mode is not None:
         state["mode"] = mode
 
@@ -110,18 +111,35 @@ def parse_x83_state(data: bytes) -> dict[str, object]:
     if total_purification < 9_999_999:
         state["total_purification"] = total_purification
 
+    state["linkage_state"] = data[43]
+
     return state
 
 
 def parse_f072_state(data: bytes, g30_family: bool = False) -> dict[str, object]:
     """Parse the statically mapped X50/G30 F072 state family."""
-    if len(data) < 51 or data[16:18] != b"\xF0\x72":
+    # The response payload starts with route 01. The F072 inner frame begins
+    # one byte later, while the state core begins at outer offset 24.
+    if len(data) < 56 or data[16] != 0x01 or data[17:19] != b"\xF0\x72":
         return {}
 
-    inner_length = int.from_bytes(data[18:20], "big") + 2
-    if inner_length < 15 or len(data) < 16 + inner_length:
+    inner_start = 17
+    inner_length = int.from_bytes(data[19:21], "big") + 2
+    declared_total = data[8] + 9
+    if (
+        inner_length < 39
+        or declared_total > len(data)
+        or inner_start + inner_length > declared_total
+    ):
         return {}
-    inner = data[16 : 16 + inner_length]
+    inner = data[inner_start : inner_start + inner_length]
+    expected_type = 0x04 if g30_family else 0x03
+    if (
+        inner[4] != expected_type
+        or inner[5] not in (0x84, 0x03)
+        or inner[6] != 0x02
+    ):
+        return {}
     if crc16_genibus(inner[2:-2]) != int.from_bytes(inner[-2:], "big"):
         return {}
 
@@ -136,7 +154,8 @@ def parse_f072_state(data: bytes, g30_family: bool = False) -> dict[str, object]
     if mode is not None:
         state["mode"] = mode
 
-    state["speed"] = data[base + 4]
+    if not g30_family and 1 <= data[base + 4] <= 6:
+        state["speed"] = data[base + 4]
     timer_code = data[base + 5]
     if timer_code in TIMER_HOURS_BY_CODE:
         state["timer_hours"] = TIMER_HOURS_BY_CODE[timer_code]
@@ -165,12 +184,13 @@ def parse_f072_state(data: bytes, g30_family: bool = False) -> dict[str, object]
     if g30_family and len(data) >= 54:
         state.update(
             {
-                "temperature": data[base + 14],
+                "temperature": int.from_bytes(
+                    data[base + 14 : base + 15], "big", signed=True
+                ),
                 "humidity": data[base + 15],
                 "co2": int.from_bytes(data[base + 16:base + 18], "big"),
                 "ptc": data[base + 18],
                 "air_volume": int.from_bytes(data[base + 27:base + 29], "big"),
-                "linkage_state": data[base + 29],
             }
         )
     elif len(data) >= 54:
@@ -183,7 +203,7 @@ def parse_m25_state(data: bytes) -> dict[str, object]:
     """Parse the APK's short M25 detector frames."""
     if len(data) >= 23 and data[0:2] == b"\xA1\x04":
         data = data[16:]
-    if len(data) < 7 or data[1] not in (0xE5, 0xF5):
+    if len(data) < 7 or data[0] != 0x03 or data[1] not in (0xE5, 0xF5):
         return {}
     if data[2] in (0xA1, 0xA2) and len(data) == 17:
         return {

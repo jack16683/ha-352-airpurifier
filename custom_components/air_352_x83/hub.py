@@ -56,7 +56,8 @@ class X83Hub:
             "timer_remaining_minutes": 0, "air_quality_level": None,
             "child_lock": False, "temperature": None, "humidity": None,
             "co2": None, "ptc": None, "air_volume": None,
-            "linkage_state": None, "backlight": None, "online": False
+            "linkage_state": None, "backlight": None, "mode_code": None,
+            "online": False
         }
         self._callbacks = set()
 

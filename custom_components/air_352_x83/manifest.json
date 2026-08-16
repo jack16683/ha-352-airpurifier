@@ -1,7 +1,7 @@
 {
   "domain": "air_352_x83",
   "name": "352 Air Purifier",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "documentation": "https://github.com/jack16683/ha-352-airpurifier",
   "issue_tracker": "https://github.com/jack16683/ha-352-airpurifier/issues",
   "dependencies": [],

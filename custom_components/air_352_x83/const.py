@@ -45,6 +45,7 @@ COMMANDS = {
     "speed_4":   "5204",  "speed_5":   "5205",  "speed_6": "5206",
     "light_on":  "5600",  "light_off": "5611",
     "auto":      "5101",  "sleep":     "5102",  "turbo":     "5103",
+    "purify":    "5105",
     "timer_off": "5400",  "timer_1h":   "5401",  "timer_2h":  "5402",
     "timer_3h":  "5403",  "timer_5h":   "5405",  "timer_8h":  "5408",
     "child_lock_on": "5511", "child_lock_off": "5500",

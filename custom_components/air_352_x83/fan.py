@@ -38,7 +38,13 @@ class X83FanEntity(FanEntity):
             self._attr_preset_modes = ["auto", "sleep", "turbo", "purify"]
         else:
             self._attr_speed_count = 6
-            self._attr_preset_modes = ["auto", "sleep", "turbo", "manual"]
+            self._attr_preset_modes = [
+                "auto",
+                "sleep",
+                "turbo",
+                "manual",
+                "purify",
+            ]
 
     @property
     def device_info(self):
@@ -75,12 +81,6 @@ class X83FanEntity(FanEntity):
                 min(100, round((value - minimum) * 100 / (maximum - minimum))),
             )
         speed = self._hub.status.get("speed", 0)
-        if (
-            self._hub.model in X50_FAMILY_MODELS
-            and speed == 0
-            and self._hub.status.get("power") == "ON"
-        ):
-            speed = 6
         return int((speed / 6) * 100) if speed > 0 else 0
 
     @property
