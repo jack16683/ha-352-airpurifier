@@ -70,20 +70,18 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._discovered_device = self._discovered_devices[user_input["device"]]
             return await self.async_step_discovery_confirm()
 
-        candidates = []
+        candidates: dict[str, str] = {}
         configured = {str(value).upper() for value in self._async_current_ids()}
-        # DHCP keeps its latest address inventory in memory. There is no
-        # public active scan API for config flows, so use that inventory only
-        # to obtain candidates, then verify each one with the purifier's own
-        # read-only discovery response before showing it to the user.
-        dhcp_data = self.hass.data.get(dhcp.DATA_DHCP)
-        address_data = dhcp_data.address_data if dhcp_data is not None else {}
-        for mac_address, info in address_data.items():
-            mac = _normalize_mac(mac_address)
+        # Use Home Assistant's public DHCP-cache API only to obtain candidates,
+        # then verify each one with the purifier's read-only discovery reply.
+        for info in dhcp.async_discovered_service_info(self.hass):
+            mac = _normalize_mac(info.macaddress)
             if mac.startswith("009569") and mac not in configured:
-                candidates.append((info[dhcp.IP_ADDRESS], mac))
+                candidates[mac] = info.ip
 
-        devices = await async_discover_devices(candidates)
+        devices = await async_discover_devices(
+            [(host, mac) for mac, host in candidates.items()]
+        )
         self._discovered_devices = {str(device["mac"]): device for device in devices}
         if not self._discovered_devices:
             return self.async_abort(reason="no_devices_found")
