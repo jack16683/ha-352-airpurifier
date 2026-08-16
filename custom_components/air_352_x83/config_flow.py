@@ -72,12 +72,21 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         candidates: dict[str, str] = {}
         configured = {str(value).upper() for value in self._async_current_ids()}
-        # Use Home Assistant's public DHCP-cache API only to obtain candidates,
-        # then verify each one with the purifier's read-only discovery reply.
-        for info in dhcp.async_discovered_service_info(self.hass):
-            mac = _normalize_mac(info.macaddress)
-            if mac.startswith("009569") and mac not in configured:
-                candidates[mac] = info.ip
+        # Home Assistant 2026.8+ provides a public DHCP-cache API. Keep the
+        # older cache access as a compatibility fallback for 2026.7 and below.
+        get_discoveries = getattr(dhcp, "async_discovered_service_info", None)
+        if get_discoveries is not None:
+            for info in get_discoveries(self.hass):
+                mac = _normalize_mac(info.macaddress)
+                if mac.startswith("009569") and mac not in configured:
+                    candidates[mac] = info.ip
+        else:
+            dhcp_data = self.hass.data.get(dhcp.DATA_DHCP)
+            address_data = dhcp_data.address_data if dhcp_data is not None else {}
+            for mac_address, info in address_data.items():
+                mac = _normalize_mac(mac_address)
+                if mac.startswith("009569") and mac not in configured:
+                    candidates[mac] = info[dhcp.IP_ADDRESS]
 
         devices = await async_discover_devices(
             [(host, mac) for mac, host in candidates.items()]
