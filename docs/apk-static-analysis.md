@@ -82,10 +82,10 @@ The outer packet places this payload at offset 16.
 | 27 | 43 | linkage state |
 
 The parser accepts low-nibble modes `01`, `02`, `03`, `04`, and `05` and
-stores each value directly. This independently confirms that X83C's observed
-manual status `04` is valid. The APK's outgoing mode table is
-`[01, 02, 03, 05]`, so its manual command still sends `05`; incoming values
-`04` and `05` are both understood.
+stores each value directly. X83C hardware captures identify `04` as manual,
+while the APK's mode resources identify `05` as purify. The outgoing mode
+table is `[01, 02, 03, 05]`; manual mode on the tested X83C is entered by a
+speed command rather than by sending a mode value.
 
 ## Command construction
 
