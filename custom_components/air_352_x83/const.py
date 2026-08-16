@@ -4,20 +4,27 @@ UDP_PORT = 11530
 MODELS = {
     "x83c": "352 X83C",
     "x83": "352 X83 (全尺寸版)",
-    "x83c_plus": "352 X83C Plus (实验性只读)",
-    "x50": "352 X50 (实验性只读)",
-    "x50s": "352 X50S (实验性只读)",
-    "x60": "352 X60 (实验性只读)",
-    "x70": "352 X70 (实验性只读)",
-    "g30": "352 G30 (静态推断只读)",
-    "g45": "352 G45 (静态推断只读)",
-    "m25": "352 M25 (静态推断只读)",
+    "x83c_plus": "352 X83C Plus (实验性控制)",
+    "x50": "352 X50 (实验性控制)",
+    "x50s": "352 X50S (实验性控制)",
+    "x60": "352 X60 (实验性控制)",
+    "x70": "352 X70 (实验性控制)",
+    "g30": "352 G30 (实验性控制)",
+    "g45": "352 G45 (实验性控制)",
+    "m25": "352 M25 (实验性背光控制)",
 }
 
-CONTROL_MODELS = frozenset(("x83", "x83c"))
 X83_FAMILY_MODELS = frozenset(("x83", "x83c", "x83c_plus"))
 X50_FAMILY_MODELS = frozenset(("x50", "x50s", "x60", "x70"))
 G30_FAMILY_MODELS = frozenset(("g30", "g45"))
+PURIFIER_CONTROL_MODELS = X83_FAMILY_MODELS | X50_FAMILY_MODELS | G30_FAMILY_MODELS
+CONTROL_MODELS = PURIFIER_CONTROL_MODELS | frozenset(("m25",))
+
+# G30/G45 expose a 16-bit air-volume value rather than six discrete speeds.
+# The APK passes the value through unchanged; these product-rated maxima are
+# used only to translate Home Assistant's 1-100% fan control.
+G30_AIR_VOLUME_RANGE = {"g30": (40, 300), "g45": (40, 450)}
+G30_AIR_VOLUME_STEP = 5
 
 MODEL_DEVICE_TYPE = {
     "m25": 0x01,

@@ -1,5 +1,14 @@
 from homeassistant.components.fan import FanEntity, FanEntityFeature
-from .const import DOMAIN
+
+from .const import (
+    DOMAIN,
+    G30_AIR_VOLUME_RANGE,
+    G30_AIR_VOLUME_STEP,
+    G30_FAMILY_MODELS,
+    X50_FAMILY_MODELS,
+    X83_FAMILY_MODELS,
+)
+
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     hub = hass.data[DOMAIN][config_entry.entry_id]
@@ -18,14 +27,24 @@ class X83FanEntity(FanEntity):
             FanEntityFeature.TURN_OFF |
             FanEntityFeature.PRESET_MODE
         )
-        self._attr_speed_count = 6 
-        self._attr_preset_modes = ["auto", "sleep", "turbo", "manual"]
+        if hub.model in G30_FAMILY_MODELS:
+            minimum, maximum = G30_AIR_VOLUME_RANGE[hub.model]
+            self._attr_speed_count = (
+                (maximum - minimum) // G30_AIR_VOLUME_STEP + 1
+            )
+            self._attr_preset_modes = ["auto", "purify"]
+        elif hub.model in X50_FAMILY_MODELS:
+            self._attr_speed_count = 6
+            self._attr_preset_modes = ["auto", "sleep", "turbo", "purify"]
+        else:
+            self._attr_speed_count = 6
+            self._attr_preset_modes = ["auto", "sleep", "turbo", "manual"]
 
     @property
     def device_info(self):
         return {
             "identifiers": {(DOMAIN, self._hub.mac)},
-            "name": f"352 {self._hub.model.upper()}空气净化器",
+            "name": self._hub.device_name,
             "manufacturer": "352",
             "model": self._hub.model.upper()
         }
@@ -46,7 +65,22 @@ class X83FanEntity(FanEntity):
 
     @property
     def percentage(self):
+        if self._hub.model in G30_FAMILY_MODELS:
+            minimum, maximum = G30_AIR_VOLUME_RANGE[self._hub.model]
+            value = self._hub.status.get("air_volume")
+            if not isinstance(value, int) or value <= 0:
+                return 0
+            return max(
+                1,
+                min(100, round((value - minimum) * 100 / (maximum - minimum))),
+            )
         speed = self._hub.status.get("speed", 0)
+        if (
+            self._hub.model in X50_FAMILY_MODELS
+            and speed == 0
+            and self._hub.status.get("power") == "ON"
+        ):
+            speed = 6
         return int((speed / 6) * 100) if speed > 0 else 0
 
     @property
@@ -75,6 +109,20 @@ class X83FanEntity(FanEntity):
             await self.async_turn_off()
             return
             
+        if self._hub.model in G30_FAMILY_MODELS:
+            minimum, maximum = G30_AIR_VOLUME_RANGE[self._hub.model]
+            unrounded = minimum + percentage * (maximum - minimum) / 100
+            air_volume = (
+                int((unrounded + G30_AIR_VOLUME_STEP / 2) // G30_AIR_VOLUME_STEP)
+                * G30_AIR_VOLUME_STEP
+            )
+            air_volume = max(minimum, min(maximum, air_volume))
+            self._hub.status["power"] = "ON"
+            self._hub.status["air_volume"] = air_volume
+            self.async_write_ha_state()
+            await self._hub.async_control(f"air_volume_{air_volume}")
+            return
+
         speed_idx = max(1, min(6, round((percentage / 100) * 6)))
         self._hub.status["power"] = "ON"
         self._hub.status["speed"] = speed_idx
@@ -88,7 +136,7 @@ class X83FanEntity(FanEntity):
             self._hub.status["mode"] = preset_mode
             self.async_write_ha_state()
 
-            if preset_mode == "manual":
+            if preset_mode == "manual" and self._hub.model in X83_FAMILY_MODELS:
                 # X83C ignores the APK's 5105 mode command. A speed command is
                 # the hardware-validated way to enter manual mode (status 04).
                 speed = max(1, min(6, self._hub.status.get("speed", 1)))

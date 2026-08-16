@@ -1,10 +1,12 @@
 import asyncio
-import socket
 import logging
+import socket
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from .const import CONTROL_MODELS, DOMAIN, UDP_PORT
+
+from .const import CONTROL_MODELS, DOMAIN, PURIFIER_CONTROL_MODELS, UDP_PORT
 from .hub import X83Hub
 
 _LOGGER = logging.getLogger(__name__)
@@ -12,8 +14,10 @@ _LOGGER = logging.getLogger(__name__)
 
 def _platforms_for_model(model: str) -> list[str]:
     """Return only platforms whose protocol is implemented for the model."""
-    if model in CONTROL_MODELS:
+    if model in PURIFIER_CONTROL_MODELS:
         return ["fan", "sensor", "select", "switch", "light"]
+    if model == "m25":
+        return ["sensor", "light"]
     return ["sensor"]
 
 
@@ -50,7 +54,14 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     mac = entry.data.get("mac")
     model = entry.data.get("model", "x83")
     
-    hub = X83Hub(hass, host, mac, model)
+    hub = X83Hub(
+        hass,
+        host,
+        mac,
+        model,
+        company_code=entry.data.get("company_code"),
+        auth_code=entry.data.get("auth_code"),
+    )
 
     # Version 1.3 folds speed into the fan entity and replaces read-only timer
     # and child-lock entities with controls. Remove their obsolete registry
@@ -83,11 +94,11 @@ async def async_setup_entry(hass: HomeAssistant, entry):
         pass
 
     try:
-        transport, protocol = await loop.create_datagram_endpoint(
+        transport, _protocol = await loop.create_datagram_endpoint(
             lambda: X83Protocol(), sock=sock
         )
         hub.transport = transport
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         _LOGGER.error("无法创建 UDP 监听: %s", e)
         return False
 
@@ -96,9 +107,8 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     
 
-    # X50 uses an F072/CRC-16 command frame, not the X83-family A5A0 frame.
-    # Keep its legacy passive state parser available without transmitting a
-    # query until that protocol has hardware validation.
+    # Each family uses its own APK-derived query frame. Experimental families
+    # are opt-in through the configured model and never reuse X83 commands.
     if model in CONTROL_MODELS:
         hass.loop.create_task(hub.async_control("query"))
     return True

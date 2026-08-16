@@ -33,8 +33,9 @@ protocol 3, and group 3 becomes protocol 4.
 
 This mapping establishes a shared packet grammar, not automatic model support.
 Different products in one family can still have different commands, status
-values, or physical features, so each family requires a real capture before
-control is enabled.
+values, or physical features. The integration exposes the APK-derived controls
+for experimentation, but only X83C was validated in this work; an exposed
+control must not be interpreted as evidence that a model or firmware accepts it.
 
 ## Common outer UDP wrapper
 
@@ -82,8 +83,11 @@ Static command construction in `X50MainPresenter` is:
 | Action | Command | Values |
 | --- | ---: | --- |
 | Read state | `11` | `11` |
-| Mode | `51` | `01`, `02`, `03`, `05` |
+| Mode | `51` | `01` auto, `02` sleep, `03` turbo, `05` purify |
 | Speed | `52` | `01`, `02`, `03`, `04`, `05`, `00` |
+| PTC | `53` | `00`, `01`, `02` |
+| Timer | `54` | `00`, `01`, `02`, `03`, `05`, `08` hours |
+| Child lock | `55` | `00` on, `11` off |
 | Display | `56` | `00` on, `11` off |
 | Power | `5E` | `00` on, `11` off |
 
@@ -109,10 +113,12 @@ offset 24:
 | 19-26 | 43-50 | accumulated values and decimal exponents |
 | 29 | 53 | linkage |
 
-The current Home Assistant integration retains a legacy passive subset of this
-parser for X50 broadcasts. It intentionally exposes no X50 fan/light control
-entities and sends no active X50 query, because the F072 command path has not
-been implemented or verified against hardware.
+The Home Assistant integration implements this F072 builder and exposes power,
+mode, six speed positions, display, timer, and child-lock controls. Community
+feedback on the original project confirms that X50 status was readable on real
+hardware, while its older X83-style controls did not operate the device. The
+new F072 controls come from APK static analysis and have not been hardware
+validated.
 
 ## G30 family: G30, G45
 
@@ -129,7 +135,7 @@ through this frame. Family-specific controls include:
 | Action | Command | Encoding |
 | --- | ---: | --- |
 | Read state | `11` | value `11` |
-| Mode | `51` | one-byte mode value |
+| Mode | `51` | `01` auto, `05` purify confirmed by the G30 UI |
 | PTC heater | `53` | one-byte value |
 | Display | `56` | `00` on, `11` off |
 | Air volume / wind | `58` | 16-bit big-endian value |
@@ -147,35 +153,46 @@ table. The G30 state core also starts at outer offset 24 and adds these fields:
 | 18 | 42 | PTC state |
 | 27-28 | 51-52 | 16-bit air volume / wind value |
 
-G30 and G45 are selectable as experimental passive parsers. They are not
-hardware-validated, queried, or controllable by the current integration.
+G30 and G45 expose experimental query, power, mode, display, timer, child lock,
+PTC, and 16-bit air-volume controls. The APK slider establishes 40-300 m³/h
+for G30 and 40-450 m³/h for G45, in steps of 5. Home Assistant maps nonzero
+fan percentages linearly across those ranges and reserves 0% for power-off.
+The percentage conversion is an integration design choice; all controls remain
+unvalidated on G30/G45 hardware.
 
 ## M25 detector family
 
-M25 is an air detector, not a purifier fan. Its parser handles short frames
-whose byte 1 is `F5`:
+M25 is an air detector, not a purifier fan. After the selector byte, its parser
+handles short frames whose byte 1 is `F5`:
 
 - types `A1`/`A2`, length 17: PM2.5 at bytes 3-4 and linkage at byte 6;
 - types `A3`/`A4`: backlight response/state at byte 5.
 
-The APK can route some M25 operations over TCP and exposes sensor/linkage/light
-behavior rather than purifier fan semantics. M25 therefore uses a separate
-experimental sensor-only HA entity model. It is selectable, but has not been
-validated on hardware and may not work.
+The APK's local detector query is `FA A0 11 11 00 00`. Backlight writes are
+`FA A3 03 01 <00|01> <sum>`, and its separate backlight query is
+`FA A4 02 01 A1`. These use route byte `03`, unlike purifier route `01`.
+The integration therefore exposes M25 sensors and an
+experimental backlight entity, but no invented purifier fan controls. Linkage
+pairing depends on another device/cloud-side configuration and is read-only.
 
 ## Current support boundary
 
 | Product | Current HA behavior | Evidence |
 | --- | --- | --- |
 | X83C | Local status, power, speed, modes, display, timer and child lock | APK plus X83C hardware captures |
-| X83 | X83-family implementation | APK family mapping; not revalidated in this work |
-| X50 | Experimental passive status subset only; no active query/control | APK static parser only |
-| X83C Plus | Experimental passive X83-family status | APK family mapping only; may not work |
-| X50S, X60, X70 | Experimental passive F072-family status | Family inference only; may not work |
-| G30, G45 | Experimental passive environmental state | APK static parser only; may not work |
-| M25 | Experimental passive detector state | APK static parser only; may not work |
+| X83 | X83-family status and control | Original project declares hardware use; not revalidated in this work |
+| X50 | Hardware-reported readable status; experimental F072 controls | Status community-tested; new controls APK-only |
+| X83C Plus | Experimental X83-family status and control | APK family mapping only; may not work |
+| X50S, X60, X70 | Experimental F072 status and control | Family inference only; may not work |
+| G30, G45 | Experimental environmental state and controls | APK static analysis only; may not work |
+| M25 | Experimental detector state and backlight control | APK static analysis only; may not work |
 
-Before enabling another family, capture at least one state query and one
-reversible control action on real hardware, verify the response sequence and
-state transition, learn the device-specific company/authentication fields, and
-add packet-level regression fixtures.
+For a model to move out of the experimental tier, capture at least one state
+query and every exposed reversible control on real hardware, verify response
+sequences and state transitions, and learn its device-specific company and
+authentication fields.
+
+Original project and community hardware reports are preserved at
+<https://bbs.hassbian.com/thread-32155-1-1.html>. They support the X83 claim and
+X50 status reading, but they do not validate this integration's new F072
+control implementation.

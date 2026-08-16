@@ -1,4 +1,4 @@
-"""Switch settings for 352 X83-family purifiers."""
+"""Switch settings for supported 352 purifiers."""
 
 from homeassistant.components.switch import SwitchEntity
 
@@ -23,7 +23,7 @@ class X83ChildLockSwitch(SwitchEntity):
     def device_info(self):
         return {
             "identifiers": {(DOMAIN, self._hub.mac)},
-            "name": f"352 {self._hub.model.upper()}空气净化器",
+            "name": self._hub.device_name,
             "manufacturer": "352",
             "model": self._hub.model.upper(),
         }

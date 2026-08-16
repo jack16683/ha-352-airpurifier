@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.components import dhcp
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
@@ -25,11 +24,15 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def _normalize(user_input):
-        return {
+        data = {
             "model": user_input["model"],
             "host": user_input["host"],
             "mac": _normalize_mac(user_input["mac"]),
         }
+        for key in ("company_code", "auth_code"):
+            if key in user_input:
+                data[key] = user_input[key]
+        return data
 
     @staticmethod
     def _schema(defaults=None):
@@ -40,10 +43,10 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "model", default=defaults.get("model", "x83c")
                 ): vol.In(MODELS),
                 vol.Required(
-                    "host", default=defaults.get("host", "192.168.50.18")
+                    "host", default=defaults.get("host", "192.0.2.10")
                 ): str,
                 vol.Required(
-                    "mac", default=defaults.get("mac", "00:11:22:33:44:55")
+                    "mac", default=defaults.get("mac", "")
                 ): str,
             }
         )
@@ -120,6 +123,8 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "model": user_input["model"],
                 "host": str(self._discovered_device["host"]),
                 "mac": str(self._discovered_device["mac"]),
+                "company_code": int(self._discovered_device["company_code"]),
+                "auth_code": int(self._discovered_device["auth_code"]),
             }
             return await self._async_create_device_entry(data)
 
@@ -143,6 +148,9 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         entry = self._get_reconfigure_entry()
         if user_input is not None:
             data = self._normalize(user_input)
+            for key in ("company_code", "auth_code"):
+                if key in entry.data:
+                    data[key] = entry.data[key]
             await self.async_set_unique_id(data["mac"])
             self._abort_if_unique_id_mismatch()
             return self.async_update_reload_and_abort(entry, data_updates=data)

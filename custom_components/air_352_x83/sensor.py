@@ -1,10 +1,12 @@
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, format_mac
+
 from .const import (
     CONTROL_MODELS,
     DOMAIN,
     G30_FAMILY_MODELS,
 )
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     hub = hass.data[DOMAIN][entry.entry_id]
@@ -23,7 +25,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             X83Sensor(hub, "PTC 状态原始值", "ptc", None, "mdi:radiator"),
             X83Sensor(hub, "风量", "air_volume", None, "mdi:weather-windy"),
             X83Sensor(hub, "联动状态原始值", "linkage_state", None, "mdi:link"),
-            X83Sensor(hub, "模式原始值", "mode", None, "mdi:fan-auto"),
+            X83Sensor(hub, "模式原始值", "mode_code", None, "mdi:fan-auto"),
             X83Sensor(hub, "档位原始值", "speed", None, "mdi:fan"),
             X83Sensor(hub, "电源状态", "power", None, "mdi:power"),
             X83Sensor(hub, "屏幕状态", "light", None, "mdi:led-on"),
@@ -107,7 +109,7 @@ class X83Sensor(SensorEntity):
         return {
             "identifiers": {(DOMAIN, self._hub.mac)},
             "connections": {(CONNECTION_NETWORK_MAC, format_mac(self._hub.mac))},
-            "name": f"352 {self._hub.model.upper()}空气净化器",
+            "name": self._hub.device_name,
             "manufacturer": "352",
             "model": self._hub.model.upper()
         }

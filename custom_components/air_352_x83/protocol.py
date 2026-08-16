@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from .const import MODEL_DEVICE_TYPE
 
-
 READ_STATE_COMMAND = "1111"
 DISCOVERY_AUTH_CODE = 0xCB76
 MODE_BY_CODE = {
@@ -14,6 +13,12 @@ MODE_BY_CODE = {
     # X83C status captures report manual as 4. Older X83 protocol tables use 5.
     4: "manual",
     5: "manual",
+}
+F072_MODE_BY_CODE = {
+    1: "auto",
+    2: "sleep",
+    3: "turbo",
+    5: "purify",
 }
 
 TIMER_HOURS_BY_CODE = {
@@ -106,10 +111,21 @@ def parse_f072_state(data: bytes, g30_family: bool = False) -> dict[str, object]
     if len(data) < 51 or data[16:18] != b"\xF0\x72":
         return {}
 
+    inner_length = int.from_bytes(data[18:20], "big") + 2
+    if inner_length < 15 or len(data) < 16 + inner_length:
+        return {}
+    inner = data[16 : 16 + inner_length]
+    if crc16_genibus(inner[2:-2]) != int.from_bytes(inner[-2:], "big"):
+        return {}
+
     base = 24
     state: dict[str, object] = {}
     mode_and_filter = data[base + 3]
-    mode = MODE_BY_CODE.get(mode_and_filter & 0x0F)
+    mode_code = mode_and_filter & 0x0F
+    state["mode_code"] = mode_code
+    mode = F072_MODE_BY_CODE.get(mode_code)
+    if g30_family and mode_code not in (1, 5):
+        mode = None
     if mode is not None:
         state["mode"] = mode
 
@@ -124,7 +140,7 @@ def parse_f072_state(data: bytes, g30_family: bool = False) -> dict[str, object]
     if data[base + 6] in (1, 2, 3):
         state["air_quality_level"] = data[base + 6]
     if data[base + 7] in (0x00, 0x11):
-        state["child_lock"] = data[base + 7] == 0x11
+        state["child_lock"] = data[base + 7] == 0x00
     if data[base + 8] in (0x00, 0x11):
         state["light"] = data[base + 8] == 0x00
     if data[base + 9] in (0x00, 0x11):
@@ -160,14 +176,16 @@ def parse_f072_state(data: bytes, g30_family: bool = False) -> dict[str, object]
 
 def parse_m25_state(data: bytes) -> dict[str, object]:
     """Parse the APK's short M25 detector frames."""
-    if len(data) < 7 or data[1] != 0xF5:
+    if len(data) >= 23 and data[0:2] == b"\xA1\x04":
+        data = data[16:]
+    if len(data) < 7 or data[1] not in (0xE5, 0xF5):
         return {}
-    if data[0] in (0xA1, 0xA2) and len(data) == 17:
+    if data[2] in (0xA1, 0xA2) and len(data) == 17:
         return {
             "pm25": int.from_bytes(data[3:5], "big"),
             "linkage_state": data[6],
         }
-    if data[0] in (0xA3, 0xA4) and len(data) >= 6:
+    if data[2] in (0xA3, 0xA4) and len(data) >= 7:
         return {"backlight": data[5]}
     return {}
 
@@ -177,7 +195,6 @@ def parse_discovery_response(data: bytes) -> dict[str, object] | None:
     if (
         len(data) < 27
         or data[0:2] != b"\xA1\x06"
-        or data[12] != 0xF1
         or data[16] != 0x23
         or data[2:8] != data[21:27]
     ):
@@ -203,8 +220,94 @@ def parse_discovery_response(data: bytes) -> dict[str, object] | None:
         "mac": data[2:8].hex().upper(),
         "model": model,
         "device_type": device_type,
+        "company_code": data[12],
         "auth_code": auth_code,
     }
+
+
+def crc16_genibus(data: bytes) -> int:
+    """Return the CRC-16/GENIBUS value used by F072 device commands."""
+    crc = 0xFFFF
+    for value in data:
+        crc ^= value << 8
+        for _ in range(8):
+            crc = (
+                ((crc << 1) ^ 0x1021) & 0xFFFF
+                if crc & 0x8000
+                else (crc << 1) & 0xFFFF
+            )
+    return crc ^ 0xFFFF
+
+
+def build_f072_command(
+    device_type: int,
+    sequence: int,
+    command: int,
+    value: int,
+    *,
+    value_16bit: bool = False,
+) -> bytes:
+    """Build the 15-byte MCU command used by X50 and G30 families."""
+    if not 0 <= value <= (0xFFFF if value_16bit else 0xFF):
+        raise ValueError("command value is outside its wire range")
+    inner = bytearray(15)
+    inner[0:4] = b"\xF0\x72\x00\x0D"
+    inner[4:7] = bytes((device_type, 0x04, 0x02))
+    inner[7:9] = (sequence & 0xFFFF).to_bytes(2, "big")
+    inner[9:11] = bytes((0x03, command))
+    if value_16bit:
+        inner[11:13] = value.to_bytes(2, "big")
+    else:
+        inner[11] = value
+        inner[12] = 0
+    inner[13:15] = crc16_genibus(bytes(inner[2:13])).to_bytes(2, "big")
+    return bytes(inner)
+
+
+def build_m25_command(action: str) -> bytes:
+    """Build the short M25 detector commands confirmed in the archived APK."""
+    if action == "query":
+        return b"\xFA\xA0\x11\x11\x00\x00"
+    if action == "backlight_query":
+        body = b"\xFA\xA4\x02\x01"
+    elif action == "light_on":
+        body = b"\xFA\xA3\x03\x01\x01"
+    elif action == "light_off":
+        body = b"\xFA\xA3\x03\x01\x00"
+    else:
+        raise ValueError(f"Unsupported M25 action: {action}")
+    return body + bytes((sum(body) & 0xFF,))
+
+
+def assemble_inner_packet(
+    mac: str,
+    model: str,
+    sequence: int,
+    inner: bytes,
+    *,
+    route: int = 0x01,
+    company_code: int = 0xF1,
+    auth_code: int = 0x0504,
+) -> bytes:
+    """Wrap an APK-style selector + inner command in the common UDP header."""
+    mac_bytes = bytes.fromhex(mac.replace(":", "").replace("-", ""))
+    if len(mac_bytes) != 6:
+        raise ValueError("MAC address must contain exactly six bytes")
+    if not 0 <= company_code <= 0xFF:
+        raise ValueError("company code must fit in one byte")
+    if not 0 <= auth_code <= 0xFFFF:
+        raise ValueError("auth code must fit in two bytes")
+    if not 0 <= route <= 0xFF:
+        raise ValueError("route must fit in one byte")
+    payload = bytes((route,)) + inner
+    header = b"\xA1\x04" + mac_bytes + bytes((len(payload) + 7, 0))
+    return (
+        header
+        + (sequence & 0xFFFF).to_bytes(2, "big")
+        + bytes((company_code, _device_type(model)))
+        + auth_code.to_bytes(2, "big")
+        + payload
+    )
 
 
 def build_device_command(command: str) -> bytes:
@@ -257,6 +360,7 @@ def assemble_packet(
     model: str,
     sequence: int,
     command: str,
+    company_code: int = 0xF1,
     auth_code: int = 0x0504,
 ) -> bytes:
     """Wrap an inner MCU command in the purifier's UDP packet header."""
@@ -271,5 +375,11 @@ def assemble_packet(
     sequence_bytes = (sequence & 0xFFFF).to_bytes(2, "big")
     if not 0 <= auth_code <= 0xFFFF:
         raise ValueError("auth code must fit in two bytes")
-    body = bytes((0xF1, device_type)) + auth_code.to_bytes(2, "big") + b"\x01"
+    if not 0 <= company_code <= 0xFF:
+        raise ValueError("company code must fit in one byte")
+    body = (
+        bytes((company_code, device_type))
+        + auth_code.to_bytes(2, "big")
+        + b"\x01"
+    )
     return header + sequence_bytes + body + build_device_command(command)
