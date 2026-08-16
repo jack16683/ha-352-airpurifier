@@ -1,6 +1,6 @@
 # 352 Air Purifier for Home Assistant
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)
 ![IoT Class](https://img.shields.io/badge/IoT_Class-Local_Push-success.svg)
 
@@ -19,7 +19,7 @@
 | G30 / G45 | 环境状态、风机/模式/风量、屏幕、定时、童锁、PTC 实验性控制 | **很低：APK 静态推导，可能不可用** |
 | M25 | PM2.5、联动、背光状态与实验性背光控制 | **很低：APK 静态推导，可能不可用** |
 
-“可在配置页选择”不等于已经验证。1.4.0 按用户需求开放了所有 APK
+“可在配置页选择”不等于已经验证。1.4.0 起按用户需求开放了所有 APK
 型号的本地控制入口，但每个协议族使用各自的帧格式；不会把 X83 的
 `A5 A0` 控制帧发给 X50/G30/M25。除 X83C 外的实验性控制有可能无效、
 状态不回显，甚至与个别固件的语义不一致，请只在能观察设备且便于断电

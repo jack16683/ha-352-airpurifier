@@ -80,6 +80,12 @@ Additional hardware tests confirmed these zero-based offsets in the complete
 | 40 | total-purification decimal exponent | APK scaling rules |
 | 41-42 | total-purification base | big-endian integer |
 
+The tested X83C currently reports its lifetime purification counter as
+`04 01 0E`: exponent 4 and base 270, or 2,700,000 m³. The archived APK only
+implemented exponent branches 0 through 3 and therefore displayed 270 for
+this newer/larger counter value. The integration handles the observed
+exponent-4 form as ordinary base-10 scaling.
+
 The timer-off restore was sent from OpenWrt with sequence `0010`; the device
 responded with the same sequence, timer selection `00`, and remaining time
 `0000`. Home Assistant intentionally exposes only fields with a stable parser

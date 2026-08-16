@@ -32,8 +32,14 @@ TIMER_HOURS_BY_CODE = {
 
 
 def _apk_scaled_value(exponent: int, base_value: int) -> int:
-    """Apply the decimal scaling used by the archived Android application."""
-    if exponent < 4:
+    """Apply the decimal scaling used by the device's accumulated counters.
+
+    The archived APK only has explicit branches for exponents 0 through 3.
+    X83C hardware has also been observed emitting exponent 4 after the lifetime
+    purification counter grows large, where the wire value ``04 01 0E`` means
+    270 * 10^4 rather than 270.
+    """
+    if exponent <= 4:
         return base_value * (10**exponent)
     return base_value
 
