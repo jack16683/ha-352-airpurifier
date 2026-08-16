@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "添加 352 空气净化器",
+        "menu_options": {
+          "automatic": "自动发现局域网设备",
+          "manual": "手动填写设备信息"
+        }
+      },
+      "automatic": {
+        "title": "选择发现的设备",
+        "data": {"device": "设备"}
+      },
+      "manual": {
+        "title": "手动配置",
+        "data": {"model": "型号", "host": "IP 地址", "mac": "MAC 地址"}
+      },
+      "discovery_confirm": {
+        "title": "确认发现的设备",
+        "description": "已从 {host} 的局域网发现响应识别设备（MAC：{mac}）。同协议族产品可能无法仅凭响应区分，可在此修正型号。",
+        "data": {"model": "型号"}
+      },
+      "reconfigure": {
+        "title": "重新配置",
+        "data": {"model": "型号", "host": "IP 地址", "mac": "MAC 地址"}
+      }
+    },
+    "abort": {
+      "already_configured": "该设备已经配置",
+      "cannot_connect": "设备未返回有效的 352 局域网发现响应",
+      "no_devices_found": "没有发现尚未配置的 352 设备；仍可返回并选择手动配置",
+      "reconfigure_successful": "设备配置已更新"
+    }
+  }
+}
