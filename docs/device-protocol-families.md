@@ -91,13 +91,15 @@ Static command construction in `X50MainPresenter` is:
 | Display | `56` | `00` on, `11` off |
 | Power | `5E` | `00` on, `11` off |
 
-The sixth speed position deliberately encodes as `00`; it must not be replaced
-with X83's `06`. Mode labels follow the same APK UI order as the X83 family,
-but no X50 hardware capture is available to confirm every reported value.
+The sixth speed command deliberately encodes as `00`; it must not be replaced
+with X83's `06`. The response parser reports speed positions as `01` through
+`06`. Mode labels follow the APK UI resources, but no X50 hardware capture is
+available to confirm every reported value.
 
-The X50 parser validates an `F0 72` response, removes its first eight bytes and
-trailing CRC, and treats the remaining state core as beginning at outer UDP
-offset 24:
+The X50 parser first requires route byte `01`, so `F0 72` begins at outer UDP
+offset 17 rather than 16. It validates the declared inner length, protocol
+type/subtype and trailing CRC, then treats the state core as beginning at
+outer UDP offset 24:
 
 | Core offset | Outer offset | Meaning |
 | ---: | ---: | --- |
@@ -162,8 +164,8 @@ unvalidated on G30/G45 hardware.
 
 ## M25 detector family
 
-M25 is an air detector, not a purifier fan. After the selector byte, its parser
-handles short frames whose byte 1 is `F5`:
+M25 is an air detector, not a purifier fan. After route byte `03`, its parser
+handles short frames whose byte 1 is `E5` or `F5`:
 
 - types `A1`/`A2`, length 17: PM2.5 at bytes 3-4 and linkage at byte 6;
 - types `A3`/`A4`: backlight response/state at byte 5.
@@ -171,9 +173,10 @@ handles short frames whose byte 1 is `F5`:
 The APK's local detector query is `FA A0 11 11 00 00`. Backlight writes are
 `FA A3 03 01 <00|01> <sum>`, and its separate backlight query is
 `FA A4 02 01 A1`. These use route byte `03`, unlike purifier route `01`.
-The integration therefore exposes M25 sensors and an
-experimental backlight entity, but no invented purifier fan controls. Linkage
-pairing depends on another device/cloud-side configuration and is read-only.
+The integration therefore exposes M25 sensors and an experimental backlight
+mode selector with the APK's exact behaviours, “turn off after 5 minutes” and
+“always on”, but no invented purifier fan controls. Linkage pairing depends on
+another device/cloud-side configuration and is read-only.
 
 ## Current support boundary
 

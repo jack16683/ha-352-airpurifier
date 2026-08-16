@@ -94,9 +94,10 @@ exponent-4 form as ordinary base-10 scaling.
 
 The timer-off restore was sent from OpenWrt with sequence `0010`; the device
 responded with the same sequence, timer selection `00`, and remaining time
-`0000`. Home Assistant intentionally exposes only fields with a stable parser
-or hardware evidence. The raw online-time and linkage bytes remain hidden
-because their unit and semantics have not been established.
+`0000`. Home Assistant intentionally gives semantic names only to fields with
+stable parser or hardware evidence. The linkage byte is exposed as a raw
+numeric diagnostic because its meaning has not been established; the
+online-time field remains hidden because its unit is also unknown.
 
 ## Complete reversible setting validation
 
@@ -111,10 +112,10 @@ Assistant integration. Requests used increasing sequences `0014` through
 - timer `00` restored both selection and remaining minutes to zero;
 - child lock `11` produced state `11`, then `00` restored state `00`.
 
-The APK's outgoing manual-mode command `51 05` and an exploratory `51 04`
-were both ignored by this X83C. A speed command is the validated way to enter
-manual mode, so the fan entity implements its manual preset by re-sending the
-current 1-6 speed instead of either ineffective mode command.
+The APK's outgoing purify command `51 05` and an exploratory `51 04` were both
+ignored by this X83C. A speed command is the validated way to enter manual
+mode, so the fan entity implements its manual preset by re-sending the current
+1-6 speed instead of either ineffective mode command.
 
 The local discovery request `23` was also verified independently. The X83C
 returned a 27-byte `A1 06` response containing its MAC, IPv4 address, protocol
@@ -123,9 +124,10 @@ read-only; the integration never sends the old APK's subsequent lock command.
 
 In X83C status packets, the low nibble of byte 19 is the operating mode. A
 physical-button capture confirmed `01` auto, `02` sleep, `03` turbo, and `04`
-manual. Older X83 tables use `05` for manual, so the integration accepts both
-reported values. This X83C ignored both outgoing `51 05` and the separately
-tested `51 04`, so neither is used for control.
+manual. APK resources label `05` as purify, so it is not aliased to manual.
+The tested X83C ignored both outgoing `51 05` and the separately tested
+`51 04`; manual therefore uses a validated speed command, while purify remains
+an APK-derived control that may depend on firmware or model.
 
 ## APK provenance
 
