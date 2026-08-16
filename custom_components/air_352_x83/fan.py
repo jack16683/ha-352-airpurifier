@@ -38,7 +38,7 @@ class X83FanEntity(FanEntity):
         elif hub.model in X50_FAMILY_MODELS:
             self._attr_speed_count = 6
             self._preset_actions = ("auto", "sleep", "turbo", "purify")
-        else:
+        elif hub.model == "x83c_plus":
             self._attr_speed_count = 6
             self._preset_actions = (
                 "auto",
@@ -46,6 +46,14 @@ class X83FanEntity(FanEntity):
                 "turbo",
                 "manual",
                 "purify",
+            )
+        else:
+            self._attr_speed_count = 6
+            self._preset_actions = (
+                "auto",
+                "sleep",
+                "turbo",
+                "manual",
             )
         self._attr_preset_modes = [
             MODE_LABELS[action] for action in self._preset_actions
