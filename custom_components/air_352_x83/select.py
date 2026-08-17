@@ -9,7 +9,24 @@ from .const import (
     X50_FAMILY_MODELS,
 )
 
-PTC_OPTIONS = {"关闭": 0, "一级": 1, "二级": 2}
+PTC_OPTIONS = {"off": 0, "level_1": 1, "level_2": 2}
+PTC_OPTION_ALIASES = {"关闭": "off", "一级": "level_1", "二级": "level_2"}
+M25_BACKLIGHT_OPTIONS = {
+    "off_after_5_minutes": (0, "light_off"),
+    "always_on": (1, "light_on"),
+}
+M25_BACKLIGHT_ALIASES = {
+    "5 分钟后关闭": "off_after_5_minutes",
+    "常亮": "always_on",
+}
+TIMER_OPTION_ALIASES = {
+    "关闭": "off",
+    "1 小时": "1_hour",
+    "2 小时": "2_hours",
+    "3 小时": "3_hours",
+    "5 小时": "5_hours",
+    "8 小时": "8_hours",
+}
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -29,19 +46,15 @@ class M25BacklightModeSelect(SelectEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = "背光模式"
+        self._attr_name = None
+        self._attr_translation_key = "backlight_mode"
         self._attr_icon = "mdi:lightbulb-auto"
         self._attr_unique_id = f"select_{hub.mac}_backlight_mode"
-        self._attr_options = ["5 分钟后关闭", "常亮"]
+        self._attr_options = list(M25_BACKLIGHT_OPTIONS)
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._hub.mac)},
-            "name": self._hub.device_name,
-            "manufacturer": "352",
-            "model": self._hub.model.upper(),
-        }
+        return self._hub.device_info
 
     @property
     def should_poll(self):
@@ -55,15 +68,21 @@ class M25BacklightModeSelect(SelectEntity):
 
     @property
     def current_option(self):
-        return {0: "5 分钟后关闭", 1: "常亮"}.get(
-            self._hub.status.get("backlight")
+        value = self._hub.status.get("backlight")
+        return next(
+            (
+                name
+                for name, (code, _) in M25_BACKLIGHT_OPTIONS.items()
+                if code == value
+            ),
+            None,
         )
 
     async def async_select_option(self, option: str) -> None:
-        actions = {"5 分钟后关闭": (0, "light_off"), "常亮": (1, "light_on")}
-        if option not in actions:
+        option = M25_BACKLIGHT_ALIASES.get(option, option)
+        if option not in M25_BACKLIGHT_OPTIONS:
             raise ValueError(f"Unsupported M25 backlight option: {option}")
-        value, action = actions[option]
+        value, action = M25_BACKLIGHT_OPTIONS[option]
         self._hub.status["backlight"] = value
         self.async_write_ha_state()
         await self._hub.async_control(action)
@@ -75,19 +94,15 @@ class X83ShutdownTimerSelect(SelectEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = "关机定时"
+        self._attr_name = None
+        self._attr_translation_key = "shutdown_timer"
         self._attr_icon = "mdi:timer-cog-outline"
         self._attr_unique_id = f"select_{hub.mac}_shutdown_timer"
         self._attr_options = list(TIMER_OPTION_TO_ACTION)
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._hub.mac)},
-            "name": self._hub.device_name,
-            "manufacturer": "352",
-            "model": self._hub.model.upper(),
-        }
+        return self._hub.device_info
 
     @property
     def should_poll(self):
@@ -108,6 +123,7 @@ class X83ShutdownTimerSelect(SelectEntity):
         return None
 
     async def async_select_option(self, option: str) -> None:
+        option = TIMER_OPTION_ALIASES.get(option, option)
         if option not in TIMER_OPTION_TO_ACTION:
             raise ValueError(f"Unsupported shutdown timer option: {option}")
 
@@ -124,19 +140,15 @@ class ExperimentalPtcSelect(SelectEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = "PTC 辅热"
+        self._attr_name = None
+        self._attr_translation_key = "ptc_heating"
         self._attr_icon = "mdi:radiator"
         self._attr_unique_id = f"select_{hub.mac}_ptc"
         self._attr_options = list(PTC_OPTIONS)
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._hub.mac)},
-            "name": self._hub.device_name,
-            "manufacturer": "352",
-            "model": self._hub.model.upper(),
-        }
+        return self._hub.device_info
 
     @property
     def should_poll(self):
@@ -156,6 +168,7 @@ class ExperimentalPtcSelect(SelectEntity):
         )
 
     async def async_select_option(self, option: str) -> None:
+        option = PTC_OPTION_ALIASES.get(option, option)
         if option not in PTC_OPTIONS:
             raise ValueError(f"Unsupported PTC option: {option}")
         value = PTC_OPTIONS[option]

@@ -21,6 +21,7 @@ class X83FanEntity(FanEntity):
         self._hub = hub
         self._attr_has_entity_name = True
         self._attr_name = None
+        self._attr_translation_key = "air_purifier"
         self._attr_unique_id = f"fan_{hub.mac}"
         
         self._attr_supported_features = (
@@ -61,12 +62,7 @@ class X83FanEntity(FanEntity):
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._hub.mac)},
-            "name": self._hub.device_name,
-            "manufacturer": "352",
-            "model": self._hub.model.upper()
-        }
+        return self._hub.device_info
 
     @property
     def should_poll(self):
@@ -144,8 +140,7 @@ class X83FanEntity(FanEntity):
         await self._hub.async_control(f"speed_{speed_idx}")
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        # Keep accepting the former English actions for existing automations,
-        # while advertising and reporting Chinese labels in Home Assistant.
+        # Keep accepting the former Chinese labels for existing automations.
         action = MODE_ACTION_BY_LABEL.get(preset_mode, preset_mode)
         if action in self._preset_actions:
             self._hub.status["power"] = "ON"

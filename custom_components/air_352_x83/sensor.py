@@ -9,45 +9,69 @@ from .const import (
     MODE_CODE_LABELS,
 )
 
+POWER_STATE_LABELS = {"ON": "on", "OFF": "off"}
+BOOLEAN_STATE_LABELS = {True: "on", False: "off"}
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     hub = hass.data[DOMAIN][entry.entry_id]
     if hub.model == "m25":
         entities = [
-            X83Sensor(hub, "PM2.5", "pm25", "µg/m³", "mdi:air-filter"),
-            X83Sensor(hub, "联动状态原始值", "linkage_state", None, "mdi:link"),
-            X83Sensor(hub, "背光状态原始值", "backlight", None, "mdi:lightbulb"),
+            X83Sensor(hub, "pm25", "pm25", "µg/m³", "mdi:air-filter"),
+            X83Sensor(hub, "linkage_state_raw", "linkage_state", None, "mdi:link"),
+            X83Sensor(hub, "backlight_state_raw", "backlight", None, "mdi:lightbulb"),
         ]
     elif hub.model in G30_FAMILY_MODELS:
         entities = [
-            X83Sensor(hub, "PM2.5", "pm25", "µg/m³", "mdi:air-filter"),
-            X83Sensor(hub, "温度", "temperature", "°C", "mdi:thermometer"),
-            X83Sensor(hub, "湿度", "humidity", "%", "mdi:water-percent"),
-            X83Sensor(hub, "二氧化碳", "co2", "ppm", "mdi:molecule-co2"),
-            X83Sensor(hub, "PTC 状态原始值", "ptc", None, "mdi:radiator"),
-            X83Sensor(hub, "风量", "air_volume", None, "mdi:weather-windy"),
+            X83Sensor(hub, "pm25", "pm25", "µg/m³", "mdi:air-filter"),
+            X83Sensor(hub, "temperature", "temperature", "°C", "mdi:thermometer"),
+            X83Sensor(hub, "humidity", "humidity", "%", "mdi:water-percent"),
+            X83Sensor(hub, "carbon_dioxide", "co2", "ppm", "mdi:molecule-co2"),
+            X83Sensor(hub, "ptc_state_raw", "ptc", None, "mdi:radiator"),
+            X83Sensor(hub, "air_volume", "air_volume", None, "mdi:weather-windy"),
             X83Sensor(
                 hub,
-                "模式",
+                "operating_mode",
                 "mode_code",
                 None,
                 "mdi:fan-auto",
                 value_map=MODE_CODE_LABELS,
             ),
-            X83Sensor(hub, "电源状态", "power", None, "mdi:power"),
-            X83Sensor(hub, "屏幕状态", "light", None, "mdi:led-on"),
-            X83Sensor(hub, "童锁状态", "child_lock", None, "mdi:lock"),
-            X83Sensor(hub, "定时设置", "timer_hours", "h", "mdi:timer"),
             X83Sensor(
                 hub,
-                "定时剩余",
+                "power_state",
+                "power",
+                None,
+                "mdi:power",
+                value_map=POWER_STATE_LABELS,
+            ),
+            X83Sensor(
+                hub,
+                "display_state",
+                "light",
+                None,
+                "mdi:led-on",
+                value_map=BOOLEAN_STATE_LABELS,
+            ),
+            X83Sensor(
+                hub,
+                "child_lock_state",
+                "child_lock",
+                None,
+                "mdi:lock",
+                value_map=BOOLEAN_STATE_LABELS,
+            ),
+            X83Sensor(hub, "timer_setting", "timer_hours", "h", "mdi:timer"),
+            X83Sensor(
+                hub,
+                "timer_remaining",
                 "timer_remaining_minutes",
                 "min",
                 "mdi:timer-sand",
             ),
             X83Sensor(
                 hub,
-                "空气质量",
+                "air_quality",
                 "air_quality_level",
                 None,
                 "mdi:air-filter",
@@ -55,18 +79,18 @@ async def async_setup_entry(hass, entry, async_add_entities):
             ),
             X83Sensor(
                 hub,
-                "滤芯类型代码",
+                "filter_type_code",
                 "filter_type",
                 None,
                 "mdi:filter-cog",
                 unique_id_key="filter_installed",
             ),
             X83Sensor(
-                hub, "本次运行空气量", "total_air", "m³", "mdi:weather-windy"
+                hub, "current_run_air_volume", "total_air", "m³", "mdi:weather-windy"
             ),
             X83Sensor(
                 hub,
-                "设备累计空气量",
+                "lifetime_air_volume",
                 "total_purification",
                 "m³",
                 "mdi:leaf-circle-outline",
@@ -74,17 +98,17 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ]
     else:
         entities = [
-            X83Sensor(hub, "PM2.5", "pm25", "µg/m³", "mdi:air-filter"),
+            X83Sensor(hub, "pm25", "pm25", "µg/m³", "mdi:air-filter"),
             X83Sensor(
                 hub,
-                "设备累计空气量",
+                "lifetime_air_volume",
                 "total_purification",
                 "m³",
                 "mdi:leaf-circle-outline",
             ),
             X83Sensor(
                 hub,
-                "滤芯类型代码",
+                "filter_type_code",
                 "filter_type",
                 None,
                 "mdi:filter-cog",
@@ -92,32 +116,32 @@ async def async_setup_entry(hass, entry, async_add_entities):
             ),
             X83Sensor(
                 hub,
-                "定时剩余",
+                "timer_remaining",
                 "timer_remaining_minutes",
                 "min",
                 "mdi:timer-sand",
             ),
             X83Sensor(
                 hub,
-                "空气质量",
+                "air_quality",
                 "air_quality_level",
                 None,
                 "mdi:air-filter",
                 value_map=AIR_QUALITY_LABELS,
             ),
             X83Sensor(
-                hub, "本次运行空气量", "total_air", "m³", "mdi:weather-windy"
+                hub, "current_run_air_volume", "total_air", "m³", "mdi:weather-windy"
             ),
             X83Sensor(
                 hub,
-                "模式",
+                "operating_mode",
                 "mode_code",
                 None,
                 "mdi:fan-auto",
                 value_map=MODE_CODE_LABELS,
             ),
             X83Sensor(
-                hub, "联动状态原始值", "linkage_state", None, "mdi:link"
+                hub, "linkage_state_raw", "linkage_state", None, "mdi:link"
             ),
         ]
 
@@ -126,25 +150,54 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if hub.model not in CONTROL_MODELS:
             entities.extend(
                 [
-                    X83Sensor(hub, "风量档位原始值", "speed", None, "mdi:fan"),
-                    X83Sensor(hub, "模式状态", "mode", None, "mdi:fan-auto"),
-                    X83Sensor(hub, "电源状态", "power", None, "mdi:power"),
-                    X83Sensor(hub, "屏幕状态", "light", None, "mdi:led-on"),
-                    X83Sensor(hub, "定时设置", "timer_hours", "h", "mdi:timer"),
-                    X83Sensor(hub, "童锁状态", "child_lock", None, "mdi:lock"),
+                    X83Sensor(hub, "fan_speed_raw", "speed", None, "mdi:fan"),
+                    X83Sensor(hub, "mode_state", "mode", None, "mdi:fan-auto"),
+                    X83Sensor(
+                        hub,
+                        "power_state",
+                        "power",
+                        None,
+                        "mdi:power",
+                        value_map=POWER_STATE_LABELS,
+                    ),
+                    X83Sensor(
+                        hub,
+                        "display_state",
+                        "light",
+                        None,
+                        "mdi:led-on",
+                        value_map=BOOLEAN_STATE_LABELS,
+                    ),
+                    X83Sensor(hub, "timer_setting", "timer_hours", "h", "mdi:timer"),
+                    X83Sensor(
+                        hub,
+                        "child_lock_state",
+                        "child_lock",
+                        None,
+                        "mdi:lock",
+                        value_map=BOOLEAN_STATE_LABELS,
+                    ),
                 ]
             )
     async_add_entities(entities)
 
 class X83Sensor(SensorEntity):
     def __init__(
-        self, hub, name, key, unit, icon, unique_id_key=None, value_map=None
+        self,
+        hub,
+        translation_key,
+        key,
+        unit,
+        icon,
+        unique_id_key=None,
+        value_map=None,
     ):
         self._hub = hub
         self._key = key
         self._value_map = value_map
         self._attr_has_entity_name = True
-        self._attr_name = name
+        self._attr_name = None
+        self._attr_translation_key = translation_key
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon
         self._attr_unique_id = f"sensor_{hub.mac}_{unique_id_key or key}"
@@ -152,11 +205,8 @@ class X83Sensor(SensorEntity):
     @property
     def device_info(self):
         return {
-            "identifiers": {(DOMAIN, self._hub.mac)},
+            **self._hub.device_info,
             "connections": {(CONNECTION_NETWORK_MAC, format_mac(self._hub.mac))},
-            "name": self._hub.device_name,
-            "manufacturer": "352",
-            "model": self._hub.model.upper()
         }
 
     @property

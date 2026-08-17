@@ -6,7 +6,9 @@ from time import time
 from .const import (
     COMMANDS,
     CONTROL_MODELS,
+    DOMAIN,
     G30_FAMILY_MODELS,
+    MODELS,
     UDP_PORT,
     X50_FAMILY_MODELS,
     X83_FAMILY_MODELS,
@@ -31,11 +33,6 @@ class X83Hub:
         self.host = host
         self.mac = mac.replace(":", "").upper()
         self.model = model
-        self.device_name = (
-            "352 M25 空气检测仪"
-            if model == "m25"
-            else f"352 {model.upper()} 空气净化器"
-        )
         # X83/X50 commonly use 0x0504. X83C broadcasts its actual device auth
         # code in every status packet, so parse_data replaces this value before
         # normal control commands are sent.
@@ -60,6 +57,23 @@ class X83Hub:
             "online": False
         }
         self._callbacks = set()
+
+    @property
+    def device_info(self):
+        model_name = MODELS.get(self.model, f"352 {self.model.upper()}").removeprefix(
+            "352 "
+        )
+        info = {
+            "identifiers": {(DOMAIN, self.mac)},
+            "manufacturer": "352",
+            "model": model_name,
+            "translation_key": (
+                "air_quality_monitor" if self.model == "m25" else "air_purifier"
+            ),
+        }
+        if self.model != "m25":
+            info["translation_placeholders"] = {"model": model_name}
+        return info
 
     def register_callback(self, callback):
         self._callbacks.add(callback)

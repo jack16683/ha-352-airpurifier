@@ -11,7 +11,8 @@ class X83LightEntity(LightEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = "屏幕灯"
+        self._attr_name = None
+        self._attr_translation_key = "display_light"
         self._attr_unique_id = f"light_{hub.mac}"
         self._attr_icon = "mdi:led-on"
         self._attr_supported_color_modes = {ColorMode.ONOFF}
@@ -19,12 +20,7 @@ class X83LightEntity(LightEntity):
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._hub.mac)},
-            "name": self._hub.device_name,
-            "manufacturer": "352",
-            "model": self._hub.model.upper()
-        }
+        return self._hub.device_info
 
     @property
     def should_poll(self):

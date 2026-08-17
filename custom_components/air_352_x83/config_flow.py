@@ -5,6 +5,10 @@ from __future__ import annotations
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.components import dhcp
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+)
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .const import DOMAIN, MODELS
@@ -13,6 +17,20 @@ from .discovery import async_discover_devices
 
 def _normalize_mac(mac: str) -> str:
     return mac.replace(":", "").replace("-", "").upper()
+
+
+def _model_selector() -> SelectSelector:
+    return SelectSelector(
+        SelectSelectorConfig(
+            options=list(MODELS),
+            translation_key="model",
+        )
+    )
+
+
+def _model_name(model: object) -> str:
+    model_key = str(model)
+    return MODELS.get(model_key, f"352 {model_key.upper()}")
 
 
 class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -41,7 +59,7 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(
                     "model", default=defaults.get("model", "x83c")
-                ): vol.In(MODELS),
+                ): _model_selector(),
                 vol.Required(
                     "host", default=defaults.get("host", "192.0.2.10")
                 ): str,
@@ -55,7 +73,8 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(str(data["mac"]))
         self._abort_if_unique_id_configured(updates={"host": data["host"]})
         return self.async_create_entry(
-            title=f"352 {str(data['model']).upper()} ({data['host']})", data=data
+            title=f"{_model_name(data['model'])} ({data['host']})",
+            data=data,
         )
 
     async def async_step_user(self, user_input=None):
@@ -96,7 +115,7 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_devices_found")
 
         labels = {
-            mac: f"352 {str(device['model']).upper()} — {device['host']}"
+            mac: f"{_model_name(device['model'])} — {device['host']}"
             for mac, device in self._discovered_devices.items()
         }
         return self.async_show_form(
@@ -141,7 +160,7 @@ class X83ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(
                         "model", default=str(self._discovered_device["model"])
-                    ): vol.In(MODELS)
+                    ): _model_selector()
                 }
             ),
             description_placeholders={

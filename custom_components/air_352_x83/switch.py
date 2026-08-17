@@ -16,17 +16,13 @@ class X83ChildLockSwitch(SwitchEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = "童锁"
+        self._attr_name = None
+        self._attr_translation_key = "child_lock"
         self._attr_unique_id = f"switch_{hub.mac}_child_lock"
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._hub.mac)},
-            "name": self._hub.device_name,
-            "manufacturer": "352",
-            "model": self._hub.model.upper(),
-        }
+        return self._hub.device_info
 
     @property
     def should_poll(self):

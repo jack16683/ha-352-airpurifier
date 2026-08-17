@@ -1,4 +1,5 @@
 {
+  "title": "352 空气净化器",
   "config": {
     "step": {
       "user": {
@@ -31,6 +32,133 @@
       "cannot_connect": "设备未返回有效的 352 局域网发现响应",
       "no_devices_found": "没有发现尚未配置的 352 设备；仍可返回并选择手动配置",
       "reconfigure_successful": "设备配置已更新"
+    }
+  },
+  "selector": {
+    "model": {
+      "options": {
+        "x83c": "352 X83C",
+        "x83": "352 X83（全尺寸版）",
+        "x83c_plus": "352 X83C Plus（实验性控制）",
+        "x50": "352 X50（实验性控制）",
+        "x50s": "352 X50S（实验性控制）",
+        "x60": "352 X60（实验性控制）",
+        "x70": "352 X70（实验性控制）",
+        "g30": "352 G30（实验性控制）",
+        "g45": "352 G45（实验性控制）",
+        "m25": "352 M25（实验性背光控制）"
+      }
+    }
+  },
+  "device": {
+    "air_purifier": {"name": "352 {model} 空气净化器"},
+    "air_quality_monitor": {"name": "352 M25 空气检测仪"}
+  },
+  "entity": {
+    "fan": {
+      "air_purifier": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "auto": "自动",
+              "sleep": "睡眠",
+              "turbo": "极速",
+              "manual": "手动",
+              "purify": "极净"
+            }
+          }
+        }
+      }
+    },
+    "light": {
+      "display_light": {"name": "屏幕灯"}
+    },
+    "switch": {
+      "child_lock": {"name": "童锁"}
+    },
+    "select": {
+      "backlight_mode": {
+        "name": "背光模式",
+        "state": {
+          "off_after_5_minutes": "5 分钟后关闭",
+          "always_on": "常亮"
+        }
+      },
+      "shutdown_timer": {
+        "name": "关机定时",
+        "state": {
+          "off": "关闭",
+          "1_hour": "1 小时",
+          "2_hours": "2 小时",
+          "3_hours": "3 小时",
+          "5_hours": "5 小时",
+          "8_hours": "8 小时"
+        }
+      },
+      "ptc_heating": {
+        "name": "PTC 辅热",
+        "state": {
+          "off": "关闭",
+          "level_1": "一级",
+          "level_2": "二级"
+        }
+      }
+    },
+    "sensor": {
+      "pm25": {"name": "PM2.5"},
+      "temperature": {"name": "温度"},
+      "humidity": {"name": "湿度"},
+      "carbon_dioxide": {"name": "二氧化碳"},
+      "air_volume": {"name": "风量"},
+      "current_run_air_volume": {"name": "本次运行空气量"},
+      "lifetime_air_volume": {"name": "设备累计空气量"},
+      "timer_setting": {"name": "定时设置"},
+      "timer_remaining": {"name": "定时剩余"},
+      "filter_type_code": {"name": "滤芯类型代码"},
+      "linkage_state_raw": {"name": "联动状态原始值"},
+      "backlight_state_raw": {"name": "背光状态原始值"},
+      "ptc_state_raw": {"name": "PTC 状态原始值"},
+      "fan_speed_raw": {"name": "风量档位原始值"},
+      "operating_mode": {
+        "name": "模式",
+        "state": {
+          "auto": "自动",
+          "sleep": "睡眠",
+          "turbo": "极速",
+          "manual": "手动",
+          "purify": "极净"
+        }
+      },
+      "mode_state": {
+        "name": "模式状态",
+        "state": {
+          "auto": "自动",
+          "sleep": "睡眠",
+          "turbo": "极速",
+          "manual": "手动",
+          "purify": "极净"
+        }
+      },
+      "air_quality": {
+        "name": "空气质量",
+        "state": {
+          "excellent": "优",
+          "good": "良",
+          "poor": "差"
+        }
+      },
+      "power_state": {
+        "name": "电源状态",
+        "state": {"on": "开启", "off": "关闭"}
+      },
+      "display_state": {
+        "name": "屏幕状态",
+        "state": {"on": "开启", "off": "关闭"}
+      },
+      "child_lock_state": {
+        "name": "童锁状态",
+        "state": {"on": "开启", "off": "关闭"}
+      }
     }
   }
 }
