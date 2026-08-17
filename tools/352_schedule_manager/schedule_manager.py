@@ -1002,25 +1002,23 @@ def print_schedule(slots: list[ScheduleSlot], as_json: bool = False) -> None:
         print(format_row(values, widths))
 
 
-def require_confirmation(
-    args: argparse.Namespace, prompt: str, expected: str = "YES"
-) -> None:
+def require_clear_confirmation(args: argparse.Namespace) -> None:
     if getattr(args, "yes", False):
         return
     if not sys.stdin.isatty():
         raise ScheduleError(
             ui(
-                "写入操作需要 --yes；本次没有发送任何写入包",
-                "Write operations require --yes; no write packet was sent",
+                "清除全部定时需要 --yes；本次没有发送任何写入包",
+                "Clearing all schedules requires --yes; no write packet was sent",
             )
         )
     answer = input(
         ui(
-            f"{prompt}\n输入 {expected} 确认：",
-            f"{prompt}\nEnter {expected} to confirm: ",
+            "将清除设备内全部 4 个循环定时槽。\n输入 CLEAR 确认：",
+            "This will clear all four recurring schedule slots.\nEnter CLEAR to confirm: ",
         )
     ).strip()
-    if answer != expected:
+    if answer != "CLEAR":
         raise ScheduleError(
             ui(
                 "操作已取消，没有发送写入包",
@@ -1084,7 +1082,6 @@ def command_device(args: argparse.Namespace) -> int:
             )
             expected = desired[args.slot - 1]
             verifier = lambda slots: slots[args.slot - 1].raw[:5] == expected.raw[:5]
-            require_confirmation(args, f"将覆盖定时槽 {args.slot}。")
         elif args.command in {"enable", "disable"}:
             desired[args.slot - 1] = desired[args.slot - 1].with_enabled(
                 args.command == "enable"
@@ -1094,14 +1091,10 @@ def command_device(args: argparse.Namespace) -> int:
                 not slots[args.slot - 1].empty
                 and slots[args.slot - 1].enabled == enabled
             )
-            require_confirmation(
-                args,
-                f"将{('启用' if enabled else '停用')}定时槽 {args.slot}。",
-            )
         elif args.command == "clear":
             desired = [ScheduleSlot.blank() for _ in range(4)]
             verifier = lambda slots: all(slot.empty for slot in slots)
-            require_confirmation(args, "将清除设备内全部 4 个循环定时槽。", "CLEAR")
+            require_clear_confirmation(args)
         else:
             raise ScheduleError(f"未知操作 {args.command}")
 
@@ -1334,9 +1327,6 @@ def interactive_device_menu(client: LanClient, device: Device) -> bool:
                 enabled = choice == 3
                 desired = list(current)
                 desired[slot - 1] = desired[slot - 1].with_enabled(enabled)
-                if input(ui("输入 YES 确认：", "Enter YES to confirm: ")).strip() != "YES":
-                    print(ui("已取消。", "Cancelled."))
-                    continue
                 confirmed = write_and_verify(
                     client,
                     device,
@@ -1429,7 +1419,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--days", default="all", help="星期，如 135；每天使用 1234567 或 all"
     )
     set_timer.add_argument("--disabled", action="store_true", help="写入但暂不启用")
-    set_timer.add_argument("--yes", action="store_true", help="跳过交互确认")
+    # Accepted as a no-op for compatibility with commands from older versions.
+    set_timer.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
 
     for name, help_text in (
         ("enable", "启用一个已有定时槽"),
@@ -1438,7 +1429,7 @@ def build_parser() -> argparse.ArgumentParser:
         action = subparsers.add_parser(name, help=help_text)
         add_device_arguments(action)
         action.add_argument("--slot", type=int, choices=range(1, 5), required=True)
-        action.add_argument("--yes", action="store_true", help="跳过交互确认")
+        action.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
 
     clear = subparsers.add_parser("clear", help="清除全部 4 个循环定时槽")
     add_device_arguments(clear)
