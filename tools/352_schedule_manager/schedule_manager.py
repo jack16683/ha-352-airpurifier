@@ -16,6 +16,7 @@ import socket
 import subprocess
 import sys
 import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Callable, Iterable
 
@@ -24,7 +25,9 @@ UDP_PORT = 11530
 DISCOVERY_AUTH = 0xCB76
 VENDOR_OUI = "009569"
 SCHEDULE_FAMILIES = {2, 3, 4}
-PASSIVE_TIMEOUT = 22.0
+PASSIVE_TIMEOUT = 45.0
+ACTIVE_SCAN_ROUNDS = 2
+ACTIVE_SCAN_WAIT = 3.0
 
 FAMILY_NAMES = {
     1: "M25（检测仪，不支持净化器定时）",
@@ -104,6 +107,29 @@ class ScheduleError(RuntimeError):
 
 def ui(chinese: str, english: str) -> str:
     return chinese if LANGUAGE == "zh" else english
+
+
+def display_width(value: str) -> int:
+    """Return the number of terminal columns used by a plain text value."""
+    return sum(
+        0
+        if unicodedata.combining(character)
+        else 2
+        if unicodedata.east_asian_width(character) in {"W", "F"}
+        else 1
+        for character in value
+    )
+
+
+def pad_display(value: object, width: int) -> str:
+    text = str(value)
+    return text + " " * max(0, width - display_width(text))
+
+
+def format_row(values: Iterable[object], widths: Iterable[int]) -> str:
+    return "  ".join(
+        pad_display(value, width) for value, width in zip(values, widths)
+    ).rstrip()
 
 
 def choose_language() -> None:
@@ -528,12 +554,10 @@ class LanClient:
         self.timeout = timeout
         self.sequence = int(time.monotonic_ns() // 1_000_000) & 0xFFFF
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            try:
-                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            except OSError:
-                pass
+        # Replies always return to UDP 11530. Allowing multiple listeners makes
+        # the OS distribute packets between them and causes intermittent misses.
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         try:
             self.socket.bind(("", UDP_PORT))
         except OSError as exc:
@@ -682,15 +706,19 @@ class LanClient:
 
 
 def run_neighbor_command() -> str:
-    arp_command = (
-        ["arp", "-a"]
-        if platform.system() == "Windows"
-        else ["arp", "-n", "-a"]
-    )
-    commands = (
-        (["ip", "neigh", "show"] if platform.system() == "Linux" else None),
-        arp_command,
-    )
+    system = platform.system()
+    if system == "Windows":
+        commands: tuple[list[str], ...] = (["arp", "-a"],)
+    elif system == "Darwin":
+        # GUI launchers and restricted Python environments may have a minimal
+        # PATH even though the system ARP command is available here.
+        commands = (["/usr/sbin/arp", "-n", "-a"], ["arp", "-n", "-a"])
+    else:
+        commands = (
+            ["ip", "neigh", "show"],
+            ["/usr/sbin/arp", "-n", "-a"],
+            ["arp", "-n", "-a"],
+        )
     outputs: list[str] = []
     if platform.system() == "Linux":
         try:
@@ -699,8 +727,6 @@ def run_neighbor_command() -> str:
         except OSError:
             pass
     for command in commands:
-        if command is None:
-            continue
         try:
             result = subprocess.run(
                 command,
@@ -780,6 +806,7 @@ def warm_subnet(network: ipaddress.IPv4Network) -> None:
 
 def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[Device]:
     client.drain()
+    deadline = time.monotonic() + timeout
     network = (
         ipaddress.ip_network(subnet, strict=False)
         if subnet
@@ -800,7 +827,6 @@ def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[
             ),
             file=sys.stderr,
         )
-        warm_subnet(network)
     else:
         print(
             ui(
@@ -810,18 +836,38 @@ def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[
             file=sys.stderr,
         )
 
-    candidates = [
-        (host, mac)
-        for host, mac in neighbor_entries()
-        if mac.startswith(VENDOR_OUI)
-    ]
     found: dict[str, Device] = {}
-    for host, mac in candidates:
-        for family in (1, 2, 3, 4):
-            sequence = client.next_sequence()
-            client.send(discovery_packet(mac, family, sequence), host)
-    for device in client.collect_devices(timeout):
-        found[device.mac] = device
+    for _ in range(ACTIVE_SCAN_ROUNDS):
+        if network is not None:
+            warm_subnet(network)
+        candidates = [
+            (host, mac)
+            for host, mac in neighbor_entries()
+            if mac.startswith(VENDOR_OUI)
+        ]
+        for host, mac in candidates:
+            for family in (1, 2, 3, 4):
+                sequence = client.next_sequence()
+                client.send(discovery_packet(mac, family, sequence), host)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        for device in client.collect_devices(min(ACTIVE_SCAN_WAIT, remaining)):
+            found[device.mac] = device
+        if found:
+            return sorted(found.values(), key=lambda item: (item.host, item.mac))
+
+    remaining = deadline - time.monotonic()
+    if remaining > 0:
+        print(
+            ui(
+                f"主动发现暂未命中，继续监听状态广播（最多 {remaining:.0f} 秒）……",
+                f"No active response yet; listening for status broadcasts (up to {remaining:.0f}s)...",
+            ),
+            file=sys.stderr,
+        )
+        for device in client.collect_devices(remaining):
+            found[device.mac] = device
     return sorted(found.values(), key=lambda item: (item.host, item.mac))
 
 
@@ -926,15 +972,19 @@ def print_schedule(slots: list[ScheduleSlot], as_json: bool = False) -> None:
             )
         )
         return
-    if LANGUAGE == "en":
-        print("Slot  Status    Days                         On      Off")
-        print("----  --------  ---------------------------  ------  ------")
-    else:
-        print("槽  状态    星期                         开机    关机")
-        print("--  ------  ---------------------------  ------  ------")
+    headers = (
+        ("Slot", "Status", "Days", "On", "Off")
+        if LANGUAGE == "en"
+        else ("槽", "状态", "星期", "开机", "关机")
+    )
+    widths = (4, 8, 27 if LANGUAGE == "en" else 35, 6, 6)
+    print(format_row(headers, widths))
+    print("  ".join("-" * width for width in widths))
     for index, slot in enumerate(slots, 1):
         if slot.empty:
-            print(f"{index:<4}  Empty" if LANGUAGE == "en" else f"{index:<2}  空")
+            empty = "Empty" if LANGUAGE == "en" else "空"
+            values = (index, empty, "", "", "")
+            print(format_row(values, widths))
             continue
         labels = DAY_LABELS_EN if LANGUAGE == "en" else DAY_LABELS
         selected_days = [
@@ -945,17 +995,11 @@ def print_schedule(slots: list[ScheduleSlot], as_json: bool = False) -> None:
         if LANGUAGE == "en":
             days = "Daily" if slot.days_mask == 0x7F else ",".join(selected_days) or "None"
             status = "Enabled" if slot.enabled else "Disabled"
-            print(
-                f"{index:<4}  {status:<8}  {days:<27}  "
-                f"{slot.turn_on or '--':<6}  {slot.turn_off or '--':<6}"
-            )
         else:
             days = "每天" if slot.days_mask == 0x7F else "、".join(selected_days) or "未选择"
             status = "启用" if slot.enabled else "停用"
-            print(
-                f"{index:<2}  {status:<6}  {days:<27}  "
-                f"{slot.turn_on or '--':<6}  {slot.turn_off or '--':<6}"
-            )
+        values = (index, status, days, slot.turn_on or "--", slot.turn_off or "--")
+        print(format_row(values, widths))
 
 
 def require_confirmation(
@@ -1081,35 +1125,42 @@ def prompt_choice(prompt: str, minimum: int, maximum: int) -> int:
 
 
 def interactive_pick_device(client: LanClient) -> Device:
-    print(
-        ui(
-            "\n设备来源：\n1. 扫描本地网络\n2. 手动输入 IP",
-            "\nDevice source:\n1. Scan local network\n2. Enter IP manually",
+    while True:
+        print(
+            ui(
+                "\n设备来源：\n1. 扫描本地网络\n2. 手动输入 IP",
+                "\nDevice source:\n1. Scan local network\n2. Enter IP manually",
+            )
         )
-    )
-    choice = prompt_choice(ui("选择：", "Choice: "), 1, 2)
-    if choice == 1:
-        subnet = (
-            input(
-                ui(
-                    "扫描网段（直接回车自动判断，例如 192.168.1.0/24）：",
-                    "Subnet (press Enter to detect, e.g. 192.168.1.0/24): ",
+        choice = prompt_choice(ui("选择：", "Choice: "), 1, 2)
+        if choice == 1:
+            subnet = (
+                input(
+                    ui(
+                        "扫描网段（直接回车自动判断，例如 192.168.1.0/24）：",
+                        "Subnet (press Enter to detect, e.g. 192.168.1.0/24): ",
+                    )
+                ).strip()
+                or None
+            )
+            devices = scan_devices(client, subnet, PASSIVE_TIMEOUT)
+            print_devices(devices)
+            if not devices:
+                print(
+                    ui(
+                        "扫描没有结果，已返回设备来源菜单，可重新扫描或手动输入。",
+                        "No scan result. Returning to device source; scan again or enter an IP.",
+                    )
                 )
-            ).strip()
-            or None
-        )
-        devices = scan_devices(client, subnet, PASSIVE_TIMEOUT)
-        print_devices(devices)
-        if not devices:
-            print(ui("扫描没有结果，改用手动输入。", "No scan result; switching to manual IP."))
-            choice = 2
-        else:
+                continue
             selected = prompt_choice(
                 ui("选择设备编号：", "Device number: "), 1, len(devices)
             )
             device = devices[selected - 1]
             client.learn_sequence(device.sequence)
             return device
+
+        break
 
     host = str(ipaddress.ip_address(input(ui("设备 IP：", "Device IP: ")).strip()))
     mac = resolve_neighbor_mac(host)
@@ -1270,11 +1321,6 @@ def interactive_device_menu(client: LanClient, device: Device) -> bool:
                     turn_on, turn_off, parse_days(days), enabled
                 )
                 expected = desired[slot - 1]
-                if input(
-                    ui("输入 YES 确认覆盖：", "Enter YES to replace: ")
-                ).strip() != "YES":
-                    print(ui("已取消。", "Cancelled."))
-                    continue
                 confirmed = write_and_verify(
                     client,
                     device,
@@ -1348,7 +1394,7 @@ def add_device_arguments(parser: argparse.ArgumentParser) -> None:
         "--passive-timeout",
         type=float,
         default=PASSIVE_TIMEOUT,
-        help="邻居表无 MAC 时监听状态广播的秒数（默认 22）",
+        help=f"邻居表无 MAC 时监听状态广播的秒数（默认 {PASSIVE_TIMEOUT:g}）",
     )
     parser.add_argument("--json", action="store_true", help="以 JSON 输出查询结果")
 
@@ -1363,7 +1409,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout",
         type=float,
         default=PASSIVE_TIMEOUT,
-        help="无主动发现结果时监听广播的秒数（默认 22）",
+        help=f"无主动发现结果时监听广播的秒数（默认 {PASSIVE_TIMEOUT:g}）",
     )
     scan.add_argument("--json", action="store_true")
 
