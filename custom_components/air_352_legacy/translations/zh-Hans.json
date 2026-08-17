@@ -1,9 +1,9 @@
 {
-  "title": "352 空气净化器",
+  "title": "352 旧款设备本地控制",
   "config": {
     "step": {
       "user": {
-        "title": "添加 352 空气净化器",
+        "title": "添加 352 旧款设备",
         "menu_options": {
           "automatic": "自动发现局域网设备",
           "manual": "手动填写设备信息"

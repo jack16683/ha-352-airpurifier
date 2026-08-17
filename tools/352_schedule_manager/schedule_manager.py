@@ -1298,8 +1298,8 @@ def interactive() -> int:
     choose_language()
     print(
         ui(
-            "352 净化器本机循环定时管理器",
-            "352 Purifier Local Recurring Schedule Manager",
+            "352 Legacy Local 本机循环定时管理器",
+            "352 Legacy Local Recurring Schedule Manager",
         )
     )
     print(
@@ -1481,7 +1481,7 @@ def add_device_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="352 净化器本机循环定时管理器")
+    parser = argparse.ArgumentParser(description="352 Legacy Local schedule manager")
     subparsers = parser.add_subparsers(dest="command")
 
     scan = subparsers.add_parser("scan", help="扫描本地 352 设备")

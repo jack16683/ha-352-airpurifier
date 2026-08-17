@@ -1,9 +1,9 @@
 {
-  "title": "352 Air Purifier",
+  "title": "352 Legacy Local",
   "config": {
     "step": {
       "user": {
-        "title": "Add a 352 air purifier",
+        "title": "Add a legacy 352 device",
         "menu_options": {
           "automatic": "Discover devices on the local network",
           "manual": "Enter device details manually"

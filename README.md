@@ -1,87 +1,139 @@
-# 352 Air Purifier for Home Assistant
+# 352 Legacy Local
 
-![Version](https://img.shields.io/badge/version-1.4.2-blue.svg)
+简体中文 | [English](README_EN.md)
+
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)
 ![IoT Class](https://img.shields.io/badge/IoT_Class-Local_Push-success.svg)
 
-专为 352 品牌智能空气净化器打造的 Home Assistant 局域网本地集成插件。
-控制不依赖已失效的 352 云服务，直接使用局域网 UDP 协议。
+面向 352 旧款空气净化器和检测仪的 Home Assistant 本地集成。项目只使用
+局域网 UDP 协议，不登录 352 账号，也不依赖已经失效的旧云服务。
 
-## ✨ 型号与证据等级 (Models and confidence)
+`Legacy` 表示本项目只覆盖旧版 `352Air 3.2.16` APK 中出现的型号，不代表
+兼容 352 后续推出的新设备。
 
-| 型号 | 当前行为 | 把握程度 |
+## 致谢与项目起因
+
+感谢 [yymonday/ha-352-airpurifier](https://github.com/yymonday/ha-352-airpurifier)
+提供最初的 Home Assistant 实现和 X83/X50 支持基础，也感谢
+[Hassbian 社区讨论](https://bbs.hassbian.com/thread-32155-1-1.html) 中的实机反馈。
+本项目使用新的 integration domain，可以与原项目同时安装；同一台实体设备
+不要同时添加到两个集成中。
+
+2019 年前后购买的设备本身仍能正常工作，但旧版官方 App 已无法完成登录。
+静态分析确认 App 的登录、令牌校验和设备列表依赖 `352.yunext.com`；在
+2026-08-17 检查时该域名已无法从公共 DNS 解析。为了继续使用仍然完好的
+硬件，本项目对归档 APK 进行了静态分析，并在自有 X83C 和路由器上抓取、
+验证局域网协议。
+
+这也解释了旧集成在部分 X83C 上“能读取、不能控制”的原因：旧实现固定使用
+鉴权码 `0504`，实测 X83C 状态包通告的是 `0403`。本项目从设备响应学习实际
+鉴权码，并为不同协议族分别构造命令。
+
+## 设备支持程度
+
+“可以在配置页选择”不代表已经经过对应型号实机验证。
+
+| 型号 | 当前支持 | 证据与可靠程度 |
 | --- | --- | --- |
-| X83C | 状态、风机/模式/风量、屏幕、定时、童锁控制 | **高：本机逐项抓包验证** |
-| X83 | X83 协议族状态与完整控制 | **原项目已声明实机可用**；本分支未复测该硬件 |
-| X83C Plus | 实验性 X83 协议族状态与完整控制 | 低：APK 同族映射，未实测，可能不可用 |
-| X50 | F072 状态与实验性完整控制 | **社区实机确认状态可读**；新控制仅由 APK 推导，未实测 |
-| X50S / X60 / X70 | F072 状态与实验性完整控制 | **很低：纯协议族推断，可能不可用** |
-| G30 / G45 | 环境状态、风机/模式/风量、屏幕、定时、童锁、PTC 实验性控制 | **很低：APK 静态推导，可能不可用** |
-| M25 | PM2.5、联动、背光状态与实验性背光控制 | **很低：APK 静态推导，可能不可用** |
+| X83C | 状态、电源、1–6 档风量、自动/睡眠/极速/手动、屏幕、关机定时、童锁 | **已在 X83C 上逐项抓包验证** |
+| X83 | X83 协议族状态与控制 | **原项目声明实机可用**；本项目未重新测试 X83 硬件 |
+| X50 | 状态及实验性 F072 控制 | **社区实机确认状态可读**；新版控制来自 APK，未经实机验证 |
+| X83C Plus | 实验性 X83 协议族状态与控制 | 仅有 APK 同族映射，可能不可用 |
+| X50S / X60 / X70 | 实验性 F072 状态与控制 | 仅有 APK 协议族映射，可能不可用 |
+| G30 / G45 | 环境状态、风量、模式、屏幕、定时、童锁和 PTC 实验性控制 | 仅有 APK 静态分析，可能不可用 |
+| M25 | PM2.5、联动和背光状态，实验性背光控制 | 仅有 APK 静态分析；M25 不是净化器 |
 
-“可在配置页选择”不等于已经验证。1.4.0 起按用户需求开放了所有 APK
-型号的本地控制入口，但每个协议族使用各自的帧格式；不会把 X83 的
-`A5 A0` 控制帧发给 X50/G30/M25。除 X83C 外的实验性控制有可能无效、
-状态不回显，甚至与个别固件的语义不一致，请只在能观察设备且便于断电
-恢复时尝试。原项目讨论中 X83 被作为可用机型；X50 用户则明确报告过
-“状态可读、旧版控制无效”，因此本版 X50 控制仍不能写成已验证。
-[原项目/社区讨论](https://bbs.hassbian.com/thread-32155-1-1.html)
+X83、X50、G30 和 M25 使用不同的内部帧格式。项目不会把 X83 的 `A5 A0`
+控制帧发给其他协议族。未经实测的控制仍可能被某些固件忽略，建议只在能够
+观察设备并方便断电恢复时尝试。
 
-## 🚀 核心特性 (Features)
+## Home Assistant 功能
 
-* ⚡ **完全本地化**：不依赖 352 官方云服务器，断网依然可用。
-* ⚡ **局域网状态同步**：采用 UDP 广播/单播机制。
-* 🌬️ **风机控制**：X83/X50 家族使用 1-6 档，G30/G45 使用 APK 的 16 位风量命令。
-* 🎛️ **模式切换**：X83 支持自动、睡眠、极速、手动；X50 支持自动、睡眠、极速、极净；G30/G45 只开放 APK 页面确认的自动、极净。
-* ⏲️ **硬件关机定时**：支持关闭、1、2、3、5、8 小时，状态来自设备回包。
-* 💡 **灯光控制**：净化器屏幕灯，以及 M25 的背光。
-* 📊 **丰富传感器**：实时 PM2.5、空气质量等级、滤芯类型代码、定时剩余分钟、累计空气量和累计净化空气量。
-* 🔒 **童锁与 PTC**：净化器童锁开关；X50/G30 协议族额外提供实验性 PTC 选择器。
+- 局域网自动发现，以及手动填写 IP、MAC 和型号。
+- 风扇实体统一承载电源、风量百分比和工作模式，适合 HomeKit Bridge。
+- 屏幕灯、童锁、关机定时和实验性 PTC 控制。
+- PM2.5、空气质量、定时剩余、滤芯类型代码、本次及累计净化空气量等状态。
+- 简体中文界面；其他 HA 语言自动使用英文。
+- 自动发现只读取设备信息，不执行旧 App 的设备锁定或配网写操作。
 
-为减少 HomeKit Bridge 中的重复配件，电源、1-6 档风量和模式统一由
-一个风扇实体承载；关机定时使用选择器，童锁使用开关。只读的风量、
-定时设置和童锁副本会在升级时从实体注册表移除。
+## 通过 HACS 安装
 
-## 🔎 自动发现与手动配置
-
-- 自动发现先使用 Home Assistant 的 DHCP 设备清单取得候选 IP/MAC，
-  再发送 APK 定义的只读 `0x23` 局域网发现包验证设备。
-- 发现响应可以可靠识别协议族和鉴权码，但同族子型号通常无法区分；
-  配置确认页会给出推断型号，并允许手工修正。
-- X83C 的 `0403` 鉴权码已在本机验证；其他同族产品不能保证用鉴权码
-  唯一识别。
-- 原有手动填写 IP、MAC、型号的路径完整保留。
-- 自动发现不会复刻旧 APK 的 `0x24` 锁定操作，不会修改设备状态。
-
-## 📦 安装方法 (Installation)
-
-### 推荐方法：通过 HACS 安装
-1. 打开 Home Assistant，进入 HACS。
-2. 点击右上角的三个点 `...` -> **自定义存储库 (Custom repositories)**。
-3. 存储库 URL 填入：`https://github.com/jack16683/ha-352-airpurifier`
-4. 类别选择：**集成 (Integration)**。
-5. 点击添加后，在 HACS 中搜索 `352 Air Purifier` 并下载安装。
+1. 在 Home Assistant 中打开 HACS。
+2. 进入右上角菜单，选择 **自定义存储库（Custom repositories）**。
+3. 填入 `https://github.com/jack16683/ha-352-legacy-local`。
+4. 类别选择 **集成（Integration）**，然后添加仓库。
+5. 在 HACS 中搜索并下载 **352 Legacy Local**。
 6. 重启 Home Assistant。
+7. 打开 **设置 → 设备与服务 → 添加集成**，搜索 **352 Legacy Local**。
+8. 优先尝试局域网自动发现；如果发现失败，可手动填写设备 IP、MAC 和型号。
+
+建议在路由器中为设备绑定固定 DHCP 地址。自动发现可以识别协议族和设备
+鉴权信息，但同一协议族中的具体商品型号不一定能仅凭局域网响应区分，添加时
+请核对型号。
 
 ### 手动安装
-1. 下载本仓库的代码。
-2. 将 `custom_components/air_352_x83` 文件夹放入你 Home Assistant 根目录的 `custom_components` 文件夹中。
-3. 重启 Home Assistant。
 
-## ⚙️ 配置使用 (Configuration)
-1. 在 Home Assistant 左侧菜单点击 **配置 (Settings)** -> **设备与服务 (Devices & Services)**。
-2. 点击右下角 **添加集成 (Add Integration)**，搜索 `352`。
-3. 在弹出的配置框中输入：
-   * **设备型号 (Model)**: 选择实际型号；除 X83C 和原项目声明可用的 X83 外均为实验性控制
-   * **设备 IP (Host)**: 填入净化器在局域网内的 IP (建议在路由器绑定静态 IP)
-   * **设备 MAC 地址**: 净化器的 MAC 地址 (格式如 `AA:BB:CC:DD:EE:FF`，仅为占位示例)
-4. X83/X50/G30 协议族会生成风扇、屏幕灯、关机定时、童锁和状态传感器；
-   X50/G30 协议族另有 PTC，M25 生成传感器和背光灯实体。
+将 `custom_components/air_352_legacy` 复制到 Home Assistant 配置目录下的
+`custom_components`，重启 HA，然后从“设备与服务”添加集成。
 
-## 📝 贡献与支持
-本项目通过 APK 静态分析和路由器侧实机抓包还原 352 官方协议。X83C
-协议说明、验证帧与分析边界见
-[`docs/x83c-local-protocol.md`](docs/x83c-local-protocol.md) 和
-[`docs/apk-static-analysis.md`](docs/apk-static-analysis.md)。其他型号的协议族、
-长帧 CRC 和支持边界见
-[`docs/device-protocol-families.md`](docs/device-protocol-families.md)。
+## 先清理设备里遗留的循环定时
+
+旧 App 设置的自动开关机并不一定由云端每天临时下发。APK 和实机验证表明，
+净化器 MCU 内部保存了 4 个循环定时槽；因此即使账号已经无法登录，2019 年
+写入的“每天 7 点开机”等计划仍可能继续执行，而用户无法再从 App 中删除。
+
+仓库附带独立工具
+[`tools/352_schedule_manager/schedule_manager.py`](tools/352_schedule_manager/schedule_manager.py)，
+可以在不连接 352 云服务的情况下查询、设置、停用或清空这些槽位。工具只用
+Python 标准库，支持 Windows、Linux 和 macOS。
+
+```bash
+cd tools/352_schedule_manager
+python3 schedule_manager.py
+```
+
+直接回车选择中文，然后选择自动扫描或手动输入 IP。选中设备后会自动查询并
+显示 4 个定时槽。推荐先确认内容，再选择“清除全部定时”。清除操作会要求输入
+`CLEAR`，避免误删。
+
+也可以直接使用命令行。下面的地址和 MAC 都只是占位示例：
+
+```bash
+# 查询
+python3 schedule_manager.py query \
+  --host 192.168.1.50 --mac AA:BB:CC:DD:EE:FF --model x83c
+
+# 清空 4 个设备端循环定时槽
+python3 schedule_manager.py clear \
+  --host 192.168.1.50 --mac AA:BB:CC:DD:EE:FF --model x83c
+```
+
+完整的交互操作、星期和时间格式、跨网段参数及各平台扫描说明见
+[`tools/352_schedule_manager/README.md`](tools/352_schedule_manager/README.md)。定时读写已在
+X83C 实机验证；其他净化器协议族来自 APK 共用构造器，仍属于实验性支持。
+
+## 推荐：清空后交给 Home Assistant 管理
+
+清除设备里的旧循环定时后，建议在 Home Assistant 中分别创建开机和关机
+自动化：使用“时间”作为触发条件，对本集成的风扇实体执行“打开”或“关闭”。
+这样所有计划都集中在 HA 中，能够随时查看、停用和修改，也不会再依赖失效的
+352 App。
+
+需要注意，HA 自动化要求 Home Assistant 主机和局域网在触发时正常运行；
+设备内部定时即使 HA 离线仍会执行。若需要离线兜底，可以用附带工具重新写入
+明确的设备端计划，但不要同时保留含义相同的 HA 和设备定时，以免重复执行。
+
+## 协议与逆向分析
+
+- [APK 静态分析与旧服务失效原因](docs/apk-static-analysis.md)
+- [各商品型号与四个协议族的映射](docs/device-protocol-families.md)
+- [X83C 局域网协议与实机验证记录](docs/x83c-local-protocol.md)
+
+所有公开文档和代码均不包含用户真实 MAC、内网 IP、Home Assistant token、
+APK 文件或原始抓包。欢迎对应型号的设备拥有者提交脱敏后的验证结果。
+
+## 许可证
+
+本项目沿用原项目的 [GNU GPL v2](LICENSE)。欢迎任何人免费使用、复制、修改、
+二次开发和再发布；分发修改版时请按 GPL v2 保留许可证并提供对应源代码。

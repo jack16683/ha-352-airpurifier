@@ -1,5 +1,5 @@
 {
-  "name": "352 Air Purifier",
+  "name": "352 Legacy Local",
   "render_readme": true,
   "iot_class": "Local Push",
   "homeassistant": "2026.4.2"

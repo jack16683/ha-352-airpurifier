@@ -1,4 +1,4 @@
-DOMAIN = "air_352_x83"
+DOMAIN = "air_352_legacy"
 UDP_PORT = 11530
 
 MODELS = {
