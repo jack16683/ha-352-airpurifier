@@ -16,7 +16,6 @@ class X83ChildLockSwitch(SwitchEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = None
         self._attr_translation_key = "child_lock"
         self._attr_unique_id = f"switch_{hub.mac}_child_lock"
 

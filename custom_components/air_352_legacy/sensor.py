@@ -196,7 +196,6 @@ class X83Sensor(SensorEntity):
         self._key = key
         self._value_map = value_map
         self._attr_has_entity_name = True
-        self._attr_name = None
         self._attr_translation_key = translation_key
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon

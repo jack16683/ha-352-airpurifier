@@ -11,7 +11,6 @@ class X83LightEntity(LightEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = None
         self._attr_translation_key = "display_light"
         self._attr_unique_id = f"light_{hub.mac}"
         self._attr_icon = "mdi:led-on"

@@ -46,7 +46,6 @@ class M25BacklightModeSelect(SelectEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = None
         self._attr_translation_key = "backlight_mode"
         self._attr_icon = "mdi:lightbulb-auto"
         self._attr_unique_id = f"select_{hub.mac}_backlight_mode"
@@ -94,7 +93,6 @@ class X83ShutdownTimerSelect(SelectEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = None
         self._attr_translation_key = "shutdown_timer"
         self._attr_icon = "mdi:timer-cog-outline"
         self._attr_unique_id = f"select_{hub.mac}_shutdown_timer"
@@ -140,7 +138,6 @@ class ExperimentalPtcSelect(SelectEntity):
     def __init__(self, hub):
         self._hub = hub
         self._attr_has_entity_name = True
-        self._attr_name = None
         self._attr_translation_key = "ptc_heating"
         self._attr_icon = "mdi:radiator"
         self._attr_unique_id = f"select_{hub.mac}_ptc"
