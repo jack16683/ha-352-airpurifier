@@ -28,6 +28,8 @@ SCHEDULE_FAMILIES = {2, 3, 4}
 PASSIVE_TIMEOUT = 45.0
 ACTIVE_SCAN_ROUNDS = 2
 ACTIVE_SCAN_WAIT = 3.0
+NEIGHBOR_SCAN_WAIT = 3.0
+NEIGHBOR_SETTLE_TIME = 1.0
 
 FAMILY_NAMES = {
     1: "M25（检测仪，不支持净化器定时）",
@@ -801,7 +803,30 @@ def warm_subnet(network: ipaddress.IPv4Network) -> None:
                 probe.sendto(b"", (str(host), 9))
             except OSError:
                 continue
-    time.sleep(0.8)
+
+
+def wait_for_vendor_neighbors(timeout: float) -> list[tuple[str, str]]:
+    """Wait for the ARP/neighbor sweep instead of assuming a fixed delay."""
+    deadline = time.monotonic() + max(0.0, timeout)
+    candidates: list[tuple[str, str]] = []
+    last_change: float | None = None
+    while True:
+        current = [
+            (host, mac)
+            for host, mac in neighbor_entries()
+            if mac.startswith(VENDOR_OUI)
+        ]
+        now = time.monotonic()
+        if current != candidates:
+            candidates = current
+            last_change = now
+        if candidates and last_change is not None:
+            if now - last_change >= NEIGHBOR_SETTLE_TIME:
+                return candidates
+        remaining = deadline - now
+        if remaining <= 0:
+            return candidates
+        time.sleep(min(0.2, remaining))
 
 
 def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[Device]:
@@ -842,11 +867,11 @@ def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[
     for round_number in range(1, ACTIVE_SCAN_ROUNDS + 1):
         if network is not None:
             warm_subnet(network)
-        candidates = [
-            (host, mac)
-            for host, mac in neighbor_entries()
-            if mac.startswith(VENDOR_OUI)
-        ]
+            candidates = wait_for_vendor_neighbors(
+                min(NEIGHBOR_SCAN_WAIT, max(0.0, deadline - time.monotonic()))
+            )
+        else:
+            candidates = wait_for_vendor_neighbors(0)
         attempted_candidates.update(candidates)
         for host, mac in candidates:
             for family in (1, 2, 3, 4):
