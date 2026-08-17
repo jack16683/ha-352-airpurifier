@@ -1291,6 +1291,16 @@ def retry_prompt(destination_zh: str, destination_en: str) -> bool:
 
 def interactive_device_menu(client: LanClient, device: Device) -> bool:
     """Run one device menu; return True to choose another device."""
+    try:
+        print(ui("\n当前定时：", "\nCurrent schedules:"))
+        print_schedule(client.query(device))
+    except (ScheduleError, ValueError, OSError, argparse.ArgumentTypeError) as exc:
+        print(
+            ui(
+                f"\n首次查询失败：{exc}\n可在菜单选择 1 重试。",
+                f"\nInitial query failed: {exc}\nChoose 1 in the menu to retry.",
+            )
+        )
     while True:
         print(
             ui(
