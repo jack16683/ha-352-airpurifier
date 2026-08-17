@@ -29,9 +29,14 @@ cd tools/352_schedule_manager
 python3 schedule_manager.py
 ```
 
-不带参数会进入中文交互菜单，可选择扫描或手动输入 IP。
+不带参数会先询问中文或 English，直接回车默认中文，然后进入交互菜单，
+可选择扫描或手动输入 IP。
 操作失败时不会结束程序：设备连接错误会返回设备选择，查询、设置或
 清除错误会返回当前设备菜单，可直接换选项重试。
+
+交互菜单中的时间可直接输入 `1700`、`0900`，也兼容 `17:00`、`09:00`。
+星期使用 `1=周一` 到 `7=周日`：`135` 表示周一、周三、周五，
+`1234567` 或 `all` 表示每天。
 
 ## 命令行用法
 
@@ -59,11 +64,12 @@ python3 schedule_manager.py query \
 ```bash
 python3 schedule_manager.py set \
   --host 192.168.1.50 --mac AA:BB:CC:DD:EE:FF --model x83c \
-  --slot 1 --on 19:00 --off 23:00 --days all
+  --slot 1 --on 1900 --off 2300 --days all
 ```
 
-只设置开机或关机时，另一项填 `-`。星期支持英文缩写或中文，例如
-`--days mon,wed,fri`、`--days 周一,周三,周五`。
+只设置开机或关机时，另一项填 `-`。星期推荐使用数字，例如 `--days 135`；
+同时保留英文缩写和中文兼容写法，如 `--days mon,wed,fri`、
+`--days 周一,周三,周五`。
 
 启用、停用指定槽：
 

@@ -32,6 +32,12 @@ FAMILY_NAMES = {
     3: "X50 / X50S / X60 / X70（实验性）",
     4: "G30 / G45（实验性）",
 }
+FAMILY_NAMES_EN = {
+    1: "M25 (monitor; purifier schedules unsupported)",
+    2: "X83 / X83C / X83C Plus",
+    3: "X50 / X50S / X60 / X70 (experimental)",
+    4: "G30 / G45 (experimental)",
+}
 
 MODEL_PROFILES = {
     "x83c": (2, 0x0403),
@@ -83,6 +89,8 @@ DAY_BITS = {
     "星期六": 6,
 }
 DAY_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+DAY_LABELS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+LANGUAGE = "zh"
 
 MAC_RE = re.compile(
     r"(?i)(?<![0-9a-f])(?:[0-9a-f]{1,2}[:-]){5}[0-9a-f]{1,2}(?![0-9a-f])"
@@ -94,6 +102,19 @@ class ScheduleError(RuntimeError):
     """A safe, user-facing protocol or validation failure."""
 
 
+def ui(chinese: str, english: str) -> str:
+    return chinese if LANGUAGE == "zh" else english
+
+
+def choose_language() -> None:
+    global LANGUAGE
+    try:
+        answer = input("语言 / Language（回车中文，2=English）：").strip().lower()
+    except EOFError:
+        answer = ""
+    LANGUAGE = "en" if answer in {"2", "e", "en", "eng", "english"} else "zh"
+
+
 def normalize_mac(value: str) -> str:
     parts = re.split(r"[:-]", value.strip())
     if len(parts) == 6 and all(re.fullmatch(r"[0-9A-Fa-f]{1,2}", part) for part in parts):
@@ -101,11 +122,16 @@ def normalize_mac(value: str) -> str:
     else:
         compact = re.sub(r"[^0-9A-Fa-f]", "", value).upper()
     if len(compact) != 12:
-        raise ScheduleError("MAC 地址必须包含 12 个十六进制字符")
+        raise ScheduleError(
+            ui(
+                "MAC 地址必须包含 12 个十六进制字符",
+                "MAC address must contain 12 hexadecimal characters",
+            )
+        )
     try:
         bytes.fromhex(compact)
     except ValueError as exc:
-        raise ScheduleError("MAC 地址格式无效") from exc
+        raise ScheduleError(ui("MAC 地址格式无效", "Invalid MAC address")) from exc
     return compact
 
 
@@ -150,19 +176,40 @@ def bcd_encode(value: int) -> int:
 def bcd_decode(value: int) -> int:
     high, low = value >> 4, value & 0x0F
     if high > 9 or low > 9:
-        raise ScheduleError(f"设备返回了无效 BCD 值 0x{value:02X}")
+        raise ScheduleError(
+            ui(
+                f"设备返回了无效 BCD 值 0x{value:02X}",
+                f"Device returned invalid BCD value 0x{value:02X}",
+            )
+        )
     return high * 10 + low
 
 
 def parse_time(value: str | None) -> tuple[int, int] | None:
     if value is None or value.strip() in {"", "-", "none", "无"}:
         return None
-    match = re.fullmatch(r"(\d{1,2}):(\d{2})", value.strip())
+    text = value.strip()
+    compact_match = re.fullmatch(r"\d{3,4}", text)
+    if compact_match:
+        compact = text.zfill(4)
+        match = re.fullmatch(r"(\d{2})(\d{2})", compact)
+    else:
+        match = re.fullmatch(r"(\d{1,2}):(\d{2})", text)
     if not match:
-        raise ScheduleError(f"时间 {value!r} 必须使用 HH:MM 格式")
+        raise ScheduleError(
+            ui(
+                f"时间 {value!r} 必须使用 1700 或 17:00 格式",
+                f"Time {value!r} must use 1700 or 17:00 format",
+            )
+        )
     hour, minute = int(match.group(1)), int(match.group(2))
     if hour > 23 or minute > 59:
-        raise ScheduleError(f"时间 {value!r} 超出有效范围")
+        raise ScheduleError(
+            ui(
+                f"时间 {value!r} 超出有效范围",
+                f"Time {value!r} is outside the valid range",
+            )
+        )
     return hour, minute
 
 
@@ -178,25 +225,61 @@ def decode_time(hour: int, minute: int) -> str | None:
         return None
     decoded_hour, decoded_minute = bcd_decode(hour), bcd_decode(minute)
     if decoded_hour > 23 or decoded_minute > 59:
-        raise ScheduleError("设备返回了超出范围的定时时间")
+        raise ScheduleError(
+            ui(
+                "设备返回了超出范围的定时时间",
+                "Device returned an out-of-range schedule time",
+            )
+        )
     return f"{decoded_hour:02d}:{decoded_minute:02d}"
 
 
 def parse_days(value: str) -> int:
     normalized = value.strip().lower()
-    if normalized in {"all", "daily", "everyday", "每天", "全部"}:
+    if normalized in {
+        "all",
+        "daily",
+        "everyday",
+        "每天",
+        "全部",
+        "1234567",
+        "1-7",
+        "1到7",
+    }:
         return 0x7F
     mask = 0
+    if re.fullmatch(r"[1-7]+", normalized):
+        numeric_days = list(normalized)
+    elif re.fullmatch(r"[1-7](?:[,，\s]+[1-7])+", normalized):
+        numeric_days = [part for part in re.split(r"[,，\s]+", normalized) if part]
+    else:
+        numeric_days = []
+    if numeric_days:
+        for day in numeric_days:
+            number = int(day)
+            bit = 0 if number == 7 else number
+            mask |= 1 << bit
+        return mask
     tokens = [
         part.strip().lower()
         for part in re.split(r"[,，\s]+", value)
         if part.strip()
     ]
     if not tokens:
-        raise ScheduleError("至少选择一天；每天可写 all 或 每天")
+        raise ScheduleError(
+            ui(
+                "至少选择一天；1=周一，7=周日，每天可写 all",
+                "Select at least one day; 1=Monday, 7=Sunday, or use all",
+            )
+        )
     for token in tokens:
         if token not in DAY_BITS:
-            raise ScheduleError(f"无法识别星期 {token!r}")
+            raise ScheduleError(
+                ui(
+                    f"无法识别星期 {token!r}",
+                    f"Unrecognized day value {token!r}",
+                )
+            )
         mask |= 1 << DAY_BITS[token]
     return mask
 
@@ -242,7 +325,12 @@ class ScheduleSlot:
 
     def with_enabled(self, enabled: bool) -> "ScheduleSlot":
         if self.empty:
-            raise ScheduleError("空定时槽不能直接启用，请先设置时间")
+            raise ScheduleError(
+                ui(
+                    "空定时槽不能直接启用，请先设置时间",
+                    "An empty slot cannot be enabled; set its time first",
+                )
+            )
         first = (self.raw[0] & 0x7F) | (0x80 if enabled else 0)
         return ScheduleSlot(bytes((first,)) + self.raw[1:])
 
@@ -255,7 +343,12 @@ class ScheduleSlot:
         enabled: bool,
     ) -> "ScheduleSlot":
         if parse_time(turn_on) is None and parse_time(turn_off) is None:
-            raise ScheduleError("开机和关机时间不能同时为空")
+            raise ScheduleError(
+                ui(
+                    "开机和关机时间不能同时为空",
+                    "Turn-on and turn-off times cannot both be empty",
+                )
+            )
         flag = days_mask | (0x80 if enabled else 0)
         return cls(
             bytes((flag,))
@@ -290,6 +383,8 @@ class Device:
 
     @property
     def family_name(self) -> str:
+        if LANGUAGE == "en":
+            return FAMILY_NAMES_EN.get(self.family, f"Unknown family {self.family}")
         return FAMILY_NAMES.get(self.family, f"未知协议族 {self.family}")
 
 
@@ -416,7 +511,12 @@ def parse_schedule_response(
         return None
     expected_crc = int.from_bytes(inner[-2:], "big")
     if crc16_genibus(inner[2:-2]) != expected_crc:
-        raise ScheduleError("定时查询响应的 CRC 校验失败")
+        raise ScheduleError(
+            ui(
+                "定时查询响应的 CRC 校验失败",
+                "Schedule response CRC validation failed",
+            )
+        )
     return [
         ScheduleSlot(bytes(inner[12 + index * 8 : 20 + index * 8]))
         for index in range(4)
@@ -439,7 +539,10 @@ class LanClient:
         except OSError as exc:
             self.socket.close()
             raise ScheduleError(
-                f"无法监听 UDP {UDP_PORT}：{exc}。请关闭占用端口的程序后重试"
+                ui(
+                    f"无法监听 UDP {UDP_PORT}：{exc}。请关闭占用端口的程序后重试",
+                    f"Could not bind UDP {UDP_PORT}: {exc}. Close the program using the port and retry",
+                )
             ) from exc
         self.socket.settimeout(0.2)
 
@@ -513,7 +616,12 @@ class LanClient:
 
     def query(self, device: Device, attempts: int = 3) -> list[ScheduleSlot]:
         if device.family not in SCHEDULE_FAMILIES:
-            raise ScheduleError(f"{device.family_name} 没有净化器定时协议")
+            raise ScheduleError(
+                ui(
+                    f"{device.family_name} 没有净化器定时协议",
+                    f"{device.family_name} has no purifier schedule protocol",
+                )
+            )
         for _ in range(attempts):
             self.drain()
             sequence = self.next_sequence()
@@ -525,7 +633,10 @@ class LanClient:
             if isinstance(result, list):
                 return result
         raise ScheduleError(
-            "设备没有回复定时查询；请确认电脑与净化器在可传递 UDP 的同一局域网"
+            ui(
+                "设备没有回复定时查询；请确认电脑与净化器在可传递 UDP 的同一局域网",
+                "The device did not answer the schedule query; verify bidirectional UDP connectivity",
+            )
         )
 
     def write_once(self, device: Device, slots: list[ScheduleSlot]) -> None:
@@ -676,12 +787,26 @@ def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[
     )
     if network is not None:
         if not isinstance(network, ipaddress.IPv4Network):
-            raise ScheduleError("目前只支持 IPv4 局域网扫描")
-        print(f"正在扫描 {network} 的 352 设备……", file=sys.stderr)
+            raise ScheduleError(
+                ui(
+                    "目前只支持 IPv4 局域网扫描",
+                    "Only IPv4 LAN scanning is currently supported",
+                )
+            )
+        print(
+            ui(
+                f"正在扫描 {network} 的 352 设备……",
+                f"Scanning {network} for 352 devices...",
+            ),
+            file=sys.stderr,
+        )
         warm_subnet(network)
     else:
         print(
-            "无法自动判断本地网段，将使用邻居缓存和被动监听。",
+            ui(
+                "无法自动判断本地网段，将使用邻居缓存和被动监听。",
+                "Could not infer the local subnet; using neighbor cache and passive listening.",
+            ),
             file=sys.stderr,
         )
 
@@ -722,23 +847,37 @@ def connect_device(client: LanClient, args: argparse.Namespace) -> Device:
     mac = normalize_mac(args.mac) if args.mac else resolve_neighbor_mac(host)
     if mac is None:
         print(
-            f"邻居表没有 MAC，正在监听设备状态广播，最多 {args.passive_timeout:g} 秒……",
+            ui(
+                f"邻居表没有 MAC，正在监听设备状态广播，最多 {args.passive_timeout:g} 秒……",
+                f"No MAC in the neighbor table; listening for status broadcasts for up to {args.passive_timeout:g} seconds...",
+            ),
             file=sys.stderr,
         )
         passive = client.wait_for_host_broadcast(host, args.passive_timeout)
         if passive is not None:
             return passive
-        raise ScheduleError("无法自动取得 MAC；跨网段使用时请同时提供 --mac")
+        raise ScheduleError(
+            ui(
+                "无法自动取得 MAC；跨网段使用时请同时提供 --mac",
+                "Could not learn the MAC automatically; provide --mac across routed networks",
+            )
+        )
     family_hint = MODEL_PROFILES[args.model][0] if args.model else None
     discovered = client.discover(host, mac, family_hint)
     if discovered is not None:
         return discovered
     if args.model is None:
         raise ScheduleError(
-            "设备未回复发现请求；请提供 --model 和必要时的 --auth 作为手动参数"
+            ui(
+                "设备未回复发现请求；请提供 --model 和必要时的 --auth 作为手动参数",
+                "Discovery did not respond; provide --model and, if needed, --auth",
+            )
         )
     print(
-        "警告：设备未回复发现请求，正在使用手动型号的鉴权默认值。",
+        ui(
+            "警告：设备未回复发现请求，正在使用手动型号的鉴权默认值。",
+            "Warning: discovery did not respond; using the selected model's default authentication value.",
+        ),
         file=sys.stderr,
     )
     return fallback_device(host, mac, args.model, args.company, args.auth)
@@ -764,7 +903,10 @@ def print_devices(devices: list[Device], as_json: bool = False) -> None:
         return
     if not devices:
         print(
-            "没有发现 352 设备。可改用手动 IP，并在跨网段时同时填写 MAC。"
+            ui(
+                "没有发现 352 设备。可改用手动 IP，并在跨网段时同时填写 MAC。",
+                "No 352 devices found. Try a manual IP and provide the MAC across routed networks.",
+            )
         )
         return
     for index, device in enumerate(devices, 1):
@@ -784,22 +926,36 @@ def print_schedule(slots: list[ScheduleSlot], as_json: bool = False) -> None:
             )
         )
         return
-    print("槽  状态    星期                         开机    关机")
-    print("--  ------  ---------------------------  ------  ------")
+    if LANGUAGE == "en":
+        print("Slot  Status    Days                         On      Off")
+        print("----  --------  ---------------------------  ------  ------")
+    else:
+        print("槽  状态    星期                         开机    关机")
+        print("--  ------  ---------------------------  ------  ------")
     for index, slot in enumerate(slots, 1):
         if slot.empty:
-            print(f"{index:<2}  空")
+            print(f"{index:<4}  Empty" if LANGUAGE == "en" else f"{index:<2}  空")
             continue
-        days = (
-            "每天"
-            if slot.days_mask == 0x7F
-            else "、".join(slot.day_labels) or "未选择"
-        )
-        status = "启用" if slot.enabled else "停用"
-        print(
-            f"{index:<2}  {status:<6}  {days:<27}  "
-            f"{slot.turn_on or '--':<6}  {slot.turn_off or '--':<6}"
-        )
+        labels = DAY_LABELS_EN if LANGUAGE == "en" else DAY_LABELS
+        selected_days = [
+            label
+            for bit, label in enumerate(labels)
+            if slot.days_mask & (1 << bit)
+        ]
+        if LANGUAGE == "en":
+            days = "Daily" if slot.days_mask == 0x7F else ",".join(selected_days) or "None"
+            status = "Enabled" if slot.enabled else "Disabled"
+            print(
+                f"{index:<4}  {status:<8}  {days:<27}  "
+                f"{slot.turn_on or '--':<6}  {slot.turn_off or '--':<6}"
+            )
+        else:
+            days = "每天" if slot.days_mask == 0x7F else "、".join(selected_days) or "未选择"
+            status = "启用" if slot.enabled else "停用"
+            print(
+                f"{index:<2}  {status:<6}  {days:<27}  "
+                f"{slot.turn_on or '--':<6}  {slot.turn_off or '--':<6}"
+            )
 
 
 def require_confirmation(
@@ -808,10 +964,25 @@ def require_confirmation(
     if getattr(args, "yes", False):
         return
     if not sys.stdin.isatty():
-        raise ScheduleError("写入操作需要 --yes；本次没有发送任何写入包")
-    answer = input(f"{prompt}\n输入 {expected} 确认：").strip()
+        raise ScheduleError(
+            ui(
+                "写入操作需要 --yes；本次没有发送任何写入包",
+                "Write operations require --yes; no write packet was sent",
+            )
+        )
+    answer = input(
+        ui(
+            f"{prompt}\n输入 {expected} 确认：",
+            f"{prompt}\nEnter {expected} to confirm: ",
+        )
+    ).strip()
     if answer != expected:
-        raise ScheduleError("操作已取消，没有发送写入包")
+        raise ScheduleError(
+            ui(
+                "操作已取消，没有发送写入包",
+                "Operation cancelled; no write packet was sent",
+            )
+        )
 
 
 def write_and_verify(
@@ -827,12 +998,20 @@ def write_and_verify(
     current = client.query(device)
     if not verifier(current):
         raise ScheduleError(
-            "写入后的回读结果不匹配；没有自动重发，请检查设备当前定时"
+            ui(
+                "写入后的回读结果不匹配；没有自动重发，请检查设备当前定时",
+                "Read-back did not match; the write was not retried automatically",
+            )
         )
     # A second independent read protects against accepting a delayed old packet.
     confirmed = client.query(device)
     if not verifier(confirmed):
-        raise ScheduleError("第二次回读结果不一致；请不要继续写入并检查网络")
+        raise ScheduleError(
+            ui(
+                "第二次回读结果不一致；请不要继续写入并检查网络",
+                "The second read-back differed; stop writing and check the network",
+            )
+        )
     return confirmed
 
 
@@ -893,77 +1072,146 @@ def prompt_choice(prompt: str, minimum: int, maximum: int) -> int:
         answer = input(prompt).strip()
         if answer.isdigit() and minimum <= int(answer) <= maximum:
             return int(answer)
-        print(f"请输入 {minimum} 到 {maximum}。")
+        print(
+            ui(
+                f"请输入 {minimum} 到 {maximum}。",
+                f"Enter a number from {minimum} to {maximum}.",
+            )
+        )
 
 
 def interactive_pick_device(client: LanClient) -> Device:
-    print("\n设备来源：\n1. 扫描本地网络\n2. 手动输入 IP")
-    choice = prompt_choice("选择：", 1, 2)
+    print(
+        ui(
+            "\n设备来源：\n1. 扫描本地网络\n2. 手动输入 IP",
+            "\nDevice source:\n1. Scan local network\n2. Enter IP manually",
+        )
+    )
+    choice = prompt_choice(ui("选择：", "Choice: "), 1, 2)
     if choice == 1:
         subnet = (
-            input("扫描网段（直接回车自动判断，例如 192.168.1.0/24）：").strip()
+            input(
+                ui(
+                    "扫描网段（直接回车自动判断，例如 192.168.1.0/24）：",
+                    "Subnet (press Enter to detect, e.g. 192.168.1.0/24): ",
+                )
+            ).strip()
             or None
         )
         devices = scan_devices(client, subnet, PASSIVE_TIMEOUT)
         print_devices(devices)
         if not devices:
-            print("扫描没有结果，改用手动输入。")
+            print(ui("扫描没有结果，改用手动输入。", "No scan result; switching to manual IP."))
             choice = 2
         else:
-            selected = prompt_choice("选择设备编号：", 1, len(devices))
+            selected = prompt_choice(
+                ui("选择设备编号：", "Device number: "), 1, len(devices)
+            )
             device = devices[selected - 1]
             client.learn_sequence(device.sequence)
             return device
 
-    host = str(ipaddress.ip_address(input("设备 IP：").strip()))
+    host = str(ipaddress.ip_address(input(ui("设备 IP：", "Device IP: ")).strip()))
     mac = resolve_neighbor_mac(host)
     if mac:
-        print(f"已从邻居表找到 MAC：{display_mac(mac)}")
+        print(
+            ui(
+                f"已从邻居表找到 MAC：{display_mac(mac)}",
+                f"MAC found in neighbor table: {display_mac(mac)}",
+            )
+        )
     else:
-        print(f"邻居表没有 MAC，正在监听状态广播，最多 {PASSIVE_TIMEOUT:g} 秒……")
+        print(
+            ui(
+                f"邻居表没有 MAC，正在监听状态广播，最多 {PASSIVE_TIMEOUT:g} 秒……",
+                f"No MAC in neighbor table; listening for status broadcasts for up to {PASSIVE_TIMEOUT:g} seconds...",
+            )
+        )
         passive = client.wait_for_host_broadcast(host, PASSIVE_TIMEOUT)
         if passive is not None:
-            print(f"已从状态广播找到 MAC：{display_mac(passive.mac)}")
+            print(
+                ui(
+                    f"已从状态广播找到 MAC：{display_mac(passive.mac)}",
+                    f"MAC learned from status broadcast: {display_mac(passive.mac)}",
+                )
+            )
             return passive
-        mac = normalize_mac(input("未收到广播，请填写设备 MAC：").strip())
+        mac = normalize_mac(
+            input(
+                ui(
+                    "未收到广播，请填写设备 MAC：",
+                    "No broadcast received; enter device MAC: ",
+                )
+            ).strip()
+        )
     discovered = client.discover(host, mac)
     if discovered is not None:
         return discovered
 
-    print("设备未回复发现请求，请选择手动型号：")
+    print(
+        ui(
+            "设备未回复发现请求，请选择手动型号：",
+            "Discovery did not respond; select the model manually:",
+        )
+    )
     models = list(MODEL_PROFILES)
     for index, model in enumerate(models, 1):
         print(f"{index}. {model}")
-    model = models[prompt_choice("选择：", 1, len(models)) - 1]
+    model = models[prompt_choice(ui("选择：", "Choice: "), 1, len(models)) - 1]
     default_auth = MODEL_PROFILES[model][1]
-    auth_text = input(f"鉴权码（回车使用 {default_auth:04X}）：").strip()
+    auth_text = input(
+        ui(
+            f"鉴权码（回车使用 {default_auth:04X}）：",
+            f"Authentication code (Enter for {default_auth:04X}): ",
+        )
+    ).strip()
     auth = default_auth if not auth_text else parse_hex_u16(auth_text)
     return fallback_device(host, mac, model, 0xF1, auth)
 
 
 def interactive() -> int:
-    print("352 净化器本机循环定时管理器")
-    print("仅访问局域网 UDP 11530，不连接 352 云服务。")
+    choose_language()
+    print(
+        ui(
+            "352 净化器本机循环定时管理器",
+            "352 Purifier Local Recurring Schedule Manager",
+        )
+    )
+    print(
+        ui(
+            "仅访问局域网 UDP 11530，不连接 352 云服务。",
+            "Uses LAN UDP 11530 only; never connects to the 352 cloud service.",
+        )
+    )
     while True:
         try:
             with LanClient() as client:
                 device = interactive_pick_device(client)
                 print(
-                    f"\n已选择：{device.host}  "
-                    f"{display_mac(device.mac)}  {device.family_name}"
+                    ui(
+                        f"\n已选择：{device.host}  "
+                        f"{display_mac(device.mac)}  {device.family_name}",
+                        f"\nSelected: {device.host}  "
+                        f"{display_mac(device.mac)}  {device.family_name}",
+                    )
                 )
                 if not interactive_device_menu(client, device):
                     return 0
         except (ScheduleError, ValueError, OSError, argparse.ArgumentTypeError) as exc:
-            print(f"\n错误：{exc}")
-            if not retry_prompt("返回设备选择"):
+            print(ui(f"\n错误：{exc}", f"\nError: {exc}"))
+            if not retry_prompt("返回设备选择", "return to device selection"):
                 return 1
 
 
-def retry_prompt(destination: str) -> bool:
+def retry_prompt(destination_zh: str, destination_en: str) -> bool:
     """Pause after an interactive error instead of terminating the program."""
     try:
-        answer = input(f"按回车{destination}，输入 q 退出：").strip().lower()
+        answer = input(
+            ui(
+                f"按回车{destination_zh}，输入 q 退出：",
+                f"Press Enter to {destination_en}, or q to quit: ",
+            )
+        ).strip().lower()
     except EOFError:
         return False
     return answer not in {"q", "quit", "退出"}
@@ -973,10 +1221,14 @@ def interactive_device_menu(client: LanClient, device: Device) -> bool:
     """Run one device menu; return True to choose another device."""
     while True:
         print(
-            "\n1. 查询定时\n2. 设置/覆盖定时槽\n3. 启用定时槽"
-            "\n4. 停用定时槽\n5. 清除全部定时\n6. 重新选择设备\n0. 退出"
+            ui(
+                "\n1. 查询定时\n2. 设置/覆盖定时槽\n3. 启用定时槽"
+                "\n4. 停用定时槽\n5. 清除全部定时\n6. 重新选择设备\n0. 退出",
+                "\n1. Query schedules\n2. Set/replace a slot\n3. Enable a slot"
+                "\n4. Disable a slot\n5. Clear all schedules\n6. Choose another device\n0. Exit",
+            )
         )
-        choice = prompt_choice("选择：", 0, 6)
+        choice = prompt_choice(ui("选择：", "Choice: "), 0, 6)
         if choice == 0:
             return False
         if choice == 6:
@@ -987,11 +1239,28 @@ def interactive_device_menu(client: LanClient, device: Device) -> bool:
             if choice == 1:
                 continue
             if choice == 2:
-                slot = prompt_choice("定时槽（1-4）：", 1, 4)
-                turn_on = input("开机时间 HH:MM（不设置填 -）：").strip()
-                turn_off = input("关机时间 HH:MM（不设置填 -）：").strip()
-                days = input("星期（每天填 每天；或 周一,周三）：").strip()
-                enabled = input("立即启用？[Y/n]：").strip().lower() not in {
+                slot = prompt_choice(ui("定时槽（1-4）：", "Schedule slot (1-4): "), 1, 4)
+                turn_on = input(
+                    ui(
+                        "开机时间（如 1700，不设置填 -）：",
+                        "Turn-on time (e.g. 1700, or - for none): ",
+                    )
+                ).strip()
+                turn_off = input(
+                    ui(
+                        "关机时间（如 0900，不设置填 -）：",
+                        "Turn-off time (e.g. 0900, or - for none): ",
+                    )
+                ).strip()
+                days = input(
+                    ui(
+                        "星期（1=周一…7=周日；如 135；每天填 all）：",
+                        "Days (1=Mon...7=Sun; e.g. 135; use all for daily): ",
+                    )
+                ).strip()
+                enabled = input(
+                    ui("立即启用？[Y/n]：", "Enable now? [Y/n]: ")
+                ).strip().lower() not in {
                     "n",
                     "no",
                     "否",
@@ -1001,8 +1270,10 @@ def interactive_device_menu(client: LanClient, device: Device) -> bool:
                     turn_on, turn_off, parse_days(days), enabled
                 )
                 expected = desired[slot - 1]
-                if input("输入 YES 确认覆盖：").strip() != "YES":
-                    print("已取消。")
+                if input(
+                    ui("输入 YES 确认覆盖：", "Enter YES to replace: ")
+                ).strip() != "YES":
+                    print(ui("已取消。", "Cancelled."))
                     continue
                 confirmed = write_and_verify(
                     client,
@@ -1011,12 +1282,14 @@ def interactive_device_menu(client: LanClient, device: Device) -> bool:
                     lambda slots: slots[slot - 1].raw[:5] == expected.raw[:5],
                 )
             elif choice in {3, 4}:
-                slot = prompt_choice("定时槽（1-4）：", 1, 4)
+                slot = prompt_choice(
+                    ui("定时槽（1-4）：", "Schedule slot (1-4): "), 1, 4
+                )
                 enabled = choice == 3
                 desired = list(current)
                 desired[slot - 1] = desired[slot - 1].with_enabled(enabled)
-                if input("输入 YES 确认：").strip() != "YES":
-                    print("已取消。")
+                if input(ui("输入 YES 确认：", "Enter YES to confirm: ")).strip() != "YES":
+                    print(ui("已取消。", "Cancelled."))
                     continue
                 confirmed = write_and_verify(
                     client,
@@ -1028,8 +1301,13 @@ def interactive_device_menu(client: LanClient, device: Device) -> bool:
                     ),
                 )
             else:
-                if input("输入 CLEAR 确认清除全部 4 个槽：").strip() != "CLEAR":
-                    print("已取消。")
+                if input(
+                    ui(
+                        "输入 CLEAR 确认清除全部 4 个槽：",
+                        "Enter CLEAR to clear all four slots: ",
+                    )
+                ).strip() != "CLEAR":
+                    print(ui("已取消。", "Cancelled."))
                     continue
                 desired = [ScheduleSlot.blank() for _ in range(4)]
                 confirmed = write_and_verify(
@@ -1038,11 +1316,16 @@ def interactive_device_menu(client: LanClient, device: Device) -> bool:
                     desired,
                     lambda slots: all(slot.empty for slot in slots),
                 )
-            print("操作成功，连续两次回读一致：")
+            print(
+                ui(
+                    "操作成功，连续两次回读一致：",
+                    "Success; two consecutive read-backs matched:",
+                )
+            )
             print_schedule(confirmed)
         except (ScheduleError, ValueError, OSError, argparse.ArgumentTypeError) as exc:
-            print(f"\n错误：{exc}")
-            if not retry_prompt("当前设备菜单"):
+            print(ui(f"\n错误：{exc}", f"\nError: {exc}"))
+            if not retry_prompt("返回当前设备菜单", "return to this device menu"):
                 return False
 
 
@@ -1091,12 +1374,14 @@ def build_parser() -> argparse.ArgumentParser:
     add_device_arguments(set_timer)
     set_timer.add_argument("--slot", type=int, choices=range(1, 5), required=True)
     set_timer.add_argument(
-        "--on", dest="turn_on", default="-", help="开机时间 HH:MM，- 表示不设置"
+        "--on", dest="turn_on", default="-", help="开机时间，如 1700；- 表示不设置"
     )
     set_timer.add_argument(
-        "--off", dest="turn_off", default="-", help="关机时间 HH:MM，- 表示不设置"
+        "--off", dest="turn_off", default="-", help="关机时间，如 0900；- 表示不设置"
     )
-    set_timer.add_argument("--days", default="all", help="all，或 mon,tue / 周一,周二")
+    set_timer.add_argument(
+        "--days", default="all", help="星期，如 135；每天使用 1234567 或 all"
+    )
     set_timer.add_argument("--disabled", action="store_true", help="写入但暂不启用")
     set_timer.add_argument("--yes", action="store_true", help="跳过交互确认")
 
