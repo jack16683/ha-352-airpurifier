@@ -1,5 +1,9 @@
 # 352 Legacy Local
 
+> [!IMPORTANT]
+> 此仓库已停止维护并归档。请改用全新重写的
+> [jack16683/ha-352air-legacy-local](https://github.com/jack16683/ha-352air-legacy-local)。
+
 简体中文 | [English](README_EN.md)
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)

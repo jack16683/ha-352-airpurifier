@@ -1,5 +1,9 @@
 # 352 Legacy Local
 
+> [!IMPORTANT]
+> This repository is no longer maintained and has been archived. Use the clean-room rewrite at
+> [jack16683/ha-352air-legacy-local](https://github.com/jack16683/ha-352air-legacy-local) instead.
+
 [简体中文](README.md) | English
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
