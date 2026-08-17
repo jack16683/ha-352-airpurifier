@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable, Iterable
 
@@ -30,6 +31,7 @@ ACTIVE_SCAN_ROUNDS = 2
 ACTIVE_SCAN_WAIT = 3.0
 NEIGHBOR_SCAN_WAIT = 3.0
 NEIGHBOR_SETTLE_TIME = 1.0
+DARWIN_NEIGHBOR_SCAN_WAIT = 1.0
 
 FAMILY_NAMES = {
     1: "M25（检测仪，不支持净化器定时）",
@@ -790,12 +792,32 @@ def infer_local_subnet() -> ipaddress.IPv4Network | None:
         return None
 
 
-def warm_subnet(network: ipaddress.IPv4Network) -> None:
+def warm_darwin_neighbor(host: str) -> None:
+    """Make macOS complete neighbor resolution instead of queueing a UDP burst."""
+    try:
+        subprocess.run(
+            ["/sbin/ping", "-n", "-q", "-c", "1", "-W", "200", host],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=1.0,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
+def warm_subnet(network: ipaddress.IPv4Network) -> bool:
+    """Trigger neighbor discovery and report whether all probes completed."""
     hosts = list(network.hosts())
     if len(hosts) > 1024:
         raise ScheduleError(
             "为避免扫描过大网络，请使用不超过 1024 个地址的网段"
         )
+    if platform.system() == "Darwin":
+        with ThreadPoolExecutor(max_workers=min(64, len(hosts))) as executor:
+            tuple(executor.map(warm_darwin_neighbor, map(str, hosts)))
+        return True
+
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.setblocking(False)
         for host in hosts:
@@ -803,9 +825,12 @@ def warm_subnet(network: ipaddress.IPv4Network) -> None:
                 probe.sendto(b"", (str(host), 9))
             except OSError:
                 continue
+    return False
 
 
-def wait_for_vendor_neighbors(timeout: float) -> list[tuple[str, str]]:
+def wait_for_vendor_neighbors(
+    timeout: float, settle_time: float = NEIGHBOR_SETTLE_TIME
+) -> list[tuple[str, str]]:
     """Wait for the ARP/neighbor sweep instead of assuming a fixed delay."""
     deadline = time.monotonic() + max(0.0, timeout)
     candidates: list[tuple[str, str]] = []
@@ -821,7 +846,7 @@ def wait_for_vendor_neighbors(timeout: float) -> list[tuple[str, str]]:
             candidates = current
             last_change = now
         if candidates and last_change is not None:
-            if now - last_change >= NEIGHBOR_SETTLE_TIME:
+            if now - last_change >= settle_time:
                 return candidates
         remaining = deadline - now
         if remaining <= 0:
@@ -865,13 +890,16 @@ def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[
     attempted_candidates: set[tuple[str, str]] = set()
     request_count = 0
     for round_number in range(1, ACTIVE_SCAN_ROUNDS + 1):
-        if network is not None:
-            warm_subnet(network)
-            candidates = wait_for_vendor_neighbors(
-                min(NEIGHBOR_SCAN_WAIT, max(0.0, deadline - time.monotonic()))
+        candidates = wait_for_vendor_neighbors(0, settle_time=0.0)
+        if network is not None and not candidates:
+            completed = warm_subnet(network)
+            neighbor_wait = (
+                DARWIN_NEIGHBOR_SCAN_WAIT if completed else NEIGHBOR_SCAN_WAIT
             )
-        else:
-            candidates = wait_for_vendor_neighbors(0)
+            candidates = wait_for_vendor_neighbors(
+                min(neighbor_wait, max(0.0, deadline - time.monotonic())),
+                settle_time=0.0 if completed else NEIGHBOR_SETTLE_TIME,
+            )
         attempted_candidates.update(candidates)
         for host, mac in candidates:
             for family in (1, 2, 3, 4):
