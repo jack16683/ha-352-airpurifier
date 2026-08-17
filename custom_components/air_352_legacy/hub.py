@@ -3,6 +3,8 @@ import logging
 import socket
 from time import time
 
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, format_mac
+
 from .const import (
     COMMANDS,
     CONTROL_MODELS,
@@ -65,6 +67,7 @@ class X83Hub:
         )
         info = {
             "identifiers": {(DOMAIN, self.mac)},
+            "connections": {(CONNECTION_NETWORK_MAC, format_mac(self.mac))},
             "manufacturer": "352",
             "model": model_name,
             "translation_key": (
