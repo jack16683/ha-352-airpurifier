@@ -837,7 +837,9 @@ def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[
         )
 
     found: dict[str, Device] = {}
-    for _ in range(ACTIVE_SCAN_ROUNDS):
+    attempted_candidates: set[tuple[str, str]] = set()
+    request_count = 0
+    for round_number in range(1, ACTIVE_SCAN_ROUNDS + 1):
         if network is not None:
             warm_subnet(network)
         candidates = [
@@ -845,10 +847,21 @@ def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[
             for host, mac in neighbor_entries()
             if mac.startswith(VENDOR_OUI)
         ]
+        attempted_candidates.update(candidates)
         for host, mac in candidates:
             for family in (1, 2, 3, 4):
                 sequence = client.next_sequence()
                 client.send(discovery_packet(mac, family, sequence), host)
+                request_count += 1
+        print(
+            ui(
+                f"主动发现第 {round_number}/{ACTIVE_SCAN_ROUNDS} 轮："
+                f"找到 {len(candidates)} 个候选，发送 {len(candidates) * 4} 个请求。",
+                f"Active discovery round {round_number}/{ACTIVE_SCAN_ROUNDS}: "
+                f"{len(candidates)} candidate(s), {len(candidates) * 4} request(s) sent.",
+            ),
+            file=sys.stderr,
+        )
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
@@ -859,10 +872,25 @@ def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[
 
     remaining = deadline - time.monotonic()
     if remaining > 0:
+        if request_count:
+            reason_zh = (
+                f"已向 {len(attempted_candidates)} 个候选发送 {request_count} 个发现请求，"
+                "但尚未收到发现响应"
+            )
+            reason_en = (
+                f"Sent {request_count} discovery request(s) to "
+                f"{len(attempted_candidates)} candidate(s), but received no discovery response"
+            )
+        else:
+            reason_zh = "邻居表中没有找到 352 厂商 MAC，未发送定向发现请求"
+            reason_en = (
+                "No 352 vendor MAC was found in the neighbor table; "
+                "no directed discovery request was sent"
+            )
         print(
             ui(
-                f"主动发现暂未命中，继续监听状态广播（最多 {remaining:.0f} 秒）……",
-                f"No active response yet; listening for status broadcasts (up to {remaining:.0f}s)...",
+                f"{reason_zh}；继续监听状态广播（最多 {remaining:.0f} 秒）……",
+                f"{reason_en}; listening for status broadcasts (up to {remaining:.0f}s)...",
             ),
             file=sys.stderr,
         )
