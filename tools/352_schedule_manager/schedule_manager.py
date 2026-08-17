@@ -24,6 +24,7 @@ UDP_PORT = 11530
 DISCOVERY_AUTH = 0xCB76
 VENDOR_OUI = "009569"
 SCHEDULE_FAMILIES = {2, 3, 4}
+PASSIVE_TIMEOUT = 22.0
 
 FAMILY_NAMES = {
     1: "M25（检测仪，不支持净化器定时）",
@@ -535,7 +536,10 @@ class LanClient:
     def collect_devices(self, seconds: float) -> list[Device]:
         devices: dict[str, Device] = {}
         deadline = time.monotonic() + seconds
+        last_new_device: float | None = None
         while time.monotonic() < deadline:
+            if last_new_device is not None and time.monotonic() - last_new_device >= 1.0:
+                break
             try:
                 data, address = self.socket.recvfrom(4096)
             except socket.timeout:
@@ -544,16 +548,45 @@ class LanClient:
                 data, address
             )
             if parsed is not None:
+                if parsed.mac not in devices:
+                    last_new_device = time.monotonic()
                 devices[parsed.mac] = parsed
         return sorted(devices.values(), key=lambda item: (item.host, item.mac))
 
+    def wait_for_host_broadcast(self, host: str, seconds: float) -> Device | None:
+        """Learn a device from its periodic status packet without ARP."""
+        result = self.wait_for(
+            lambda data, address: (
+                parsed
+                if (parsed := parse_passive_device(data, address))
+                and parsed.host == host
+                else None
+            ),
+            seconds,
+        )
+        if isinstance(result, Device):
+            self.learn_sequence(result.sequence)
+            return result
+        return None
+
 
 def run_neighbor_command() -> str:
+    arp_command = (
+        ["arp", "-a"]
+        if platform.system() == "Windows"
+        else ["arp", "-n", "-a"]
+    )
     commands = (
         (["ip", "neigh", "show"] if platform.system() == "Linux" else None),
-        (["arp", "-an"] if platform.system() != "Windows" else ["arp", "-a"]),
+        arp_command,
     )
     outputs: list[str] = []
+    if platform.system() == "Linux":
+        try:
+            with open("/proc/net/arp", encoding="utf-8") as arp_table:
+                outputs.append(arp_table.read())
+        except OSError:
+            pass
     for command in commands:
         if command is None:
             continue
@@ -571,9 +604,10 @@ def run_neighbor_command() -> str:
     return "\n".join(outputs)
 
 
-def neighbor_entries() -> list[tuple[str, str]]:
+def parse_neighbor_entries(output: str) -> list[tuple[str, str]]:
+    """Parse macOS, Linux and Windows ARP/neighbor command output."""
     entries: dict[str, str] = {}
-    for line in run_neighbor_command().splitlines():
+    for line in output.splitlines():
         mac_match = MAC_RE.search(line)
         ip_match = IP_RE.search(line)
         if not mac_match or not ip_match:
@@ -585,6 +619,10 @@ def neighbor_entries() -> list[tuple[str, str]]:
             continue
         entries[ip_match.group()] = mac
     return sorted(entries.items())
+
+
+def neighbor_entries() -> list[tuple[str, str]]:
+    return parse_neighbor_entries(run_neighbor_command())
 
 
 def warm_neighbor(host: str) -> None:
@@ -630,6 +668,7 @@ def warm_subnet(network: ipaddress.IPv4Network) -> None:
 
 
 def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[Device]:
+    client.drain()
     network = (
         ipaddress.ip_network(subnet, strict=False)
         if subnet
@@ -652,7 +691,6 @@ def scan_devices(client: LanClient, subnet: str | None, timeout: float) -> list[
         if mac.startswith(VENDOR_OUI)
     ]
     found: dict[str, Device] = {}
-    client.drain()
     for host, mac in candidates:
         for family in (1, 2, 3, 4):
             sequence = client.next_sequence()
@@ -683,9 +721,14 @@ def connect_device(client: LanClient, args: argparse.Namespace) -> Device:
     host = str(ipaddress.ip_address(args.host))
     mac = normalize_mac(args.mac) if args.mac else resolve_neighbor_mac(host)
     if mac is None:
-        raise ScheduleError(
-            "无法从邻居表取得 MAC；跨网段使用时请同时提供 --mac"
+        print(
+            f"邻居表没有 MAC，正在监听设备状态广播，最多 {args.passive_timeout:g} 秒……",
+            file=sys.stderr,
         )
+        passive = client.wait_for_host_broadcast(host, args.passive_timeout)
+        if passive is not None:
+            return passive
+        raise ScheduleError("无法自动取得 MAC；跨网段使用时请同时提供 --mac")
     family_hint = MODEL_PROFILES[args.model][0] if args.model else None
     discovered = client.discover(host, mac, family_hint)
     if discovered is not None:
@@ -861,7 +904,7 @@ def interactive_pick_device(client: LanClient) -> Device:
             input("扫描网段（直接回车自动判断，例如 192.168.1.0/24）：").strip()
             or None
         )
-        devices = scan_devices(client, subnet, 8.0)
+        devices = scan_devices(client, subnet, PASSIVE_TIMEOUT)
         print_devices(devices)
         if not devices:
             print("扫描没有结果，改用手动输入。")
@@ -877,7 +920,12 @@ def interactive_pick_device(client: LanClient) -> Device:
     if mac:
         print(f"已从邻居表找到 MAC：{display_mac(mac)}")
     else:
-        mac = normalize_mac(input("设备 MAC（跨网段通常必须填写）：").strip())
+        print(f"邻居表没有 MAC，正在监听状态广播，最多 {PASSIVE_TIMEOUT:g} 秒……")
+        passive = client.wait_for_host_broadcast(host, PASSIVE_TIMEOUT)
+        if passive is not None:
+            print(f"已从状态广播找到 MAC：{display_mac(passive.mac)}")
+            return passive
+        mac = normalize_mac(input("未收到广播，请填写设备 MAC：").strip())
     discovered = client.discover(host, mac)
     if discovered is not None:
         return discovered
@@ -896,20 +944,44 @@ def interactive_pick_device(client: LanClient) -> Device:
 def interactive() -> int:
     print("352 净化器本机循环定时管理器")
     print("仅访问局域网 UDP 11530，不连接 352 云服务。")
-    with LanClient() as client:
-        device = interactive_pick_device(client)
+    while True:
+        try:
+            with LanClient() as client:
+                device = interactive_pick_device(client)
+                print(
+                    f"\n已选择：{device.host}  "
+                    f"{display_mac(device.mac)}  {device.family_name}"
+                )
+                if not interactive_device_menu(client, device):
+                    return 0
+        except (ScheduleError, ValueError, OSError, argparse.ArgumentTypeError) as exc:
+            print(f"\n错误：{exc}")
+            if not retry_prompt("返回设备选择"):
+                return 1
+
+
+def retry_prompt(destination: str) -> bool:
+    """Pause after an interactive error instead of terminating the program."""
+    try:
+        answer = input(f"按回车{destination}，输入 q 退出：").strip().lower()
+    except EOFError:
+        return False
+    return answer not in {"q", "quit", "退出"}
+
+
+def interactive_device_menu(client: LanClient, device: Device) -> bool:
+    """Run one device menu; return True to choose another device."""
+    while True:
         print(
-            f"\n已选择：{device.host}  "
-            f"{display_mac(device.mac)}  {device.family_name}"
+            "\n1. 查询定时\n2. 设置/覆盖定时槽\n3. 启用定时槽"
+            "\n4. 停用定时槽\n5. 清除全部定时\n6. 重新选择设备\n0. 退出"
         )
-        while True:
-            print(
-                "\n1. 查询定时\n2. 设置/覆盖定时槽\n3. 启用定时槽"
-                "\n4. 停用定时槽\n5. 清除全部定时\n0. 退出"
-            )
-            choice = prompt_choice("选择：", 0, 5)
-            if choice == 0:
-                return 0
+        choice = prompt_choice("选择：", 0, 6)
+        if choice == 0:
+            return False
+        if choice == 6:
+            return True
+        try:
             current = client.query(device)
             print_schedule(current)
             if choice == 1:
@@ -968,6 +1040,10 @@ def interactive() -> int:
                 )
             print("操作成功，连续两次回读一致：")
             print_schedule(confirmed)
+        except (ScheduleError, ValueError, OSError, argparse.ArgumentTypeError) as exc:
+            print(f"\n错误：{exc}")
+            if not retry_prompt("当前设备菜单"):
+                return False
 
 
 def add_device_arguments(parser: argparse.ArgumentParser) -> None:
@@ -985,6 +1061,12 @@ def add_device_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--timeout", type=float, default=2.5, help="每次查询等待秒数（默认 2.5）"
     )
+    parser.add_argument(
+        "--passive-timeout",
+        type=float,
+        default=PASSIVE_TIMEOUT,
+        help="邻居表无 MAC 时监听状态广播的秒数（默认 22）",
+    )
     parser.add_argument("--json", action="store_true", help="以 JSON 输出查询结果")
 
 
@@ -994,7 +1076,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan = subparsers.add_parser("scan", help="扫描本地 352 设备")
     scan.add_argument("--subnet", help="IPv4 网段，例如 192.168.1.0/24")
-    scan.add_argument("--timeout", type=float, default=8.0, help="监听秒数（默认 8）")
+    scan.add_argument(
+        "--timeout",
+        type=float,
+        default=PASSIVE_TIMEOUT,
+        help="无主动发现结果时监听广播的秒数（默认 22）",
+    )
     scan.add_argument("--json", action="store_true")
 
     query = subparsers.add_parser("query", help="查询 4 个循环定时槽")
